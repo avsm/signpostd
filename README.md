@@ -1,7 +1,7 @@
-A Signpost client and server
+A Signpost client and server (unreleased code : work in progress!)
 ----------------------------
 
-What is a Signpost? Coming soon!
+And what is a Signpost? Coming soon!
 
 To build it you need:
 
