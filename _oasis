@@ -7,8 +7,15 @@ License:     LGPL-2.0 with OCaml linking exception
 Plugins:     META (0.2)
 BuildTools:  ocamlbuild
 
+Library signpost
+  Path:               lib
+  Pack:               true
+  Findlibname:        signpost
+  Modules:            Rpc
+  BuildDepends:       lwt.syntax, lwt, re, lwt.unix, uri
+
 Executable server
-  Path:               .
+  Path:               lib
   MainIs:             server.ml
   Custom:             true
   CompiledObject:     best
@@ -16,7 +23,7 @@ Executable server
   BuildDepends:       lwt.syntax,lwt.unix,ocamlgraph,dns,dns.server
 
 Executable client
-  Path:               .
+  Path:               lib
   MainIs:             client.ml
   Custom:             true
   CompiledObject:     best
