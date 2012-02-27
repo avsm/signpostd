@@ -17,6 +17,7 @@
 open Lwt
 open Printf
 open Int64
+open Nodes
 
 let node_name = ref "unknown"
 let node_ip = ref "unknown"
@@ -25,7 +26,8 @@ let node_port = ref (of_int 0)
 let usage () = eprintf "Usage: %s <node-name> <node-ip> <node-signalling-port>\n%!" Sys.argv.(0); exit 1
 
 let client_t () =
-  let hello_rpc = Rpc.Hello (!node_name, !node_ip, !node_port) in
+  let hello_rpc = Rpc.Hello (!node_name, !node_ip, !node_port, 
+        (Nodes.get_local_ip ())) in
   let xmit_t =
     while_lwt true do
       Signal.Client.send hello_rpc Signal.Client.sa >>
