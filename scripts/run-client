@@ -3,8 +3,6 @@ set -ex
 
 NS=10.10.0.1
 
-#killall iodine || true
-#sleep 1
 PASS=`cat scripts/PASSWD`
 
 if [ "`ps -e | grep iodine | wc -l `" -eq 0 ]; then 
