@@ -141,6 +141,4 @@ let server_t () =
 module Client = Signalling (ClientSignalling)
 
 let client_t ~port =
-  (* For now, as a nasty hack, make the client signalling channel 
-   * listen for datagrams at the server signalling channel port + 1 *)
   Client.thread ~address:"0.0.0.0" ~port:(to_int port)
