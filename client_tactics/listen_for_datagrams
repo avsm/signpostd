@@ -1,0 +1,34 @@
+#!/usr/bin/env ruby
+require 'socket'
+
+# Waits for at least 5 seconds, waiting for datagrams
+# to arrive from the server.
+
+listen_port = ARGV[0]
+token = ARGV[1]
+
+socket = UDPSocket.new
+socket.bind("0.0.0.0", listen_port)
+
+retry_count = 50
+
+received_on = []
+
+begin # emulate blocking recvfrom
+  while retry_count > 0 do
+    data, addr = socket.recvfrom_nonblock(255)  
+    #=> ["token-IP", ["AF_INET", 33302, "localhost.localdomain", "127.0.0.1"]]
+    received_token, dst_ip = data.split("-")
+    if received_token == token then
+      received_on << dst_ip
+    end
+  end
+rescue Exception => e #IO::WaitReadable
+  if retry_count > 0 then
+    retry_count -= 1
+    sleep(0.1)
+    retry
+  end
+end
+
+puts "#{received_on.uniq.join(" ")}"

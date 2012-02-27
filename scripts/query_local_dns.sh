@@ -2,8 +2,8 @@
 
 set -e
 
-num=`cat ../config.ml | grep signpost_number | awk '{print $4}'`
-domain=`cat ../config.ml | grep domain | awk '{print $4}' | sed 's/"//g'`
+num=`cat ../lib/config.ml | grep signpost_number | awk '{print $4}'`
+domain=`cat ../lib/config.ml | grep domain | awk '{print $4}' | sed 's/"//g'`
 sender="tester"
 destination="$1"
 

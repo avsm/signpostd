@@ -14,6 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
+
 exception Client_error
 
 
@@ -42,5 +43,5 @@ module type TacticSig = sig
 end
 
 
-let iprecord ip = IPAddressInstance(ip)
-let srvrecord ip port = SRVInstance(SRV(ip, port))
+val iprecord : ip -> addressable
+val srvrecord : ip -> port -> addressable

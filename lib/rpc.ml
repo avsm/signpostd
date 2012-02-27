@@ -31,18 +31,31 @@ type error =
   | NoError
 
 type rpc = 
-  | Hello of node_name * ip * port
+  | Hello of node_name * ip * port * ip list
   | Request of command * arg list * id
   | Notification of command * arg list
   | Response of result * error * id
 
 let rpc_id_counter = ref 0
 
+let rec string_list_of_json_list = function
+    | (Json.String(ip)) :: ips -> [ip] @ (string_list_of_json_list ips)
+    | [] -> []
+    | _ -> raise (Invalid_argument "Invalid arg on string_list_of_json_list")
+
+
+let rec json_list_of_string_list = function
+    | ip :: ips -> [(Json.String ip)] @ (json_list_of_string_list ips)
+    | [] -> []
+
 let rpc_to_json rpc =
   let open Json in
   Object [
     match rpc with
-    | Hello (n, i, p) -> "hello", (Array [ String n; String i; Int p])
+    | Hello (n, i, p, ips) ->
+
+        "hello", (Array [ String n; String i; Int p; 
+        Array (json_list_of_string_list ips)])
     (* Based on the specifications of JSON-RPC:
      * http://json-rpc.org/wiki/specification *)
     | Request (c, string_args, id) -> 
@@ -78,8 +91,8 @@ let rpc_to_json rpc =
 let rpc_of_json =
   let open Json in
   function
-  | Object [ "hello", (Array [String n; String i; Int p]) ] ->
-      Some (Hello (n,i, p))
+      | Object [ "hello", (Array [String n; String i; Int p; Array ips]) ] ->
+      Some (Hello (n,i, p, (string_list_of_json_list ips)))
   | Object [ "request", Object [
         ("method", String c);
         ("params", Array args);
@@ -116,7 +129,7 @@ let rpc_to_string rpc =
   Json.to_string (rpc_to_json rpc)
 
 let rpc_of_string s =
-  let json = try Some (Json.of_string s) with _ -> None in 
+  let json = try Some (Json.of_string s) with _ -> None in
   match json with
   | None -> None
   | Some x -> rpc_of_json x
@@ -125,7 +138,7 @@ let fresh_id () =
   rpc_id_counter := !rpc_id_counter + 1;
   of_int !rpc_id_counter
 
-let create_rpc method_name args =
+let create_request method_name args =
   let id = fresh_id () in
   Request(method_name, args, id)
 
