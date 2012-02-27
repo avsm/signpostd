@@ -14,6 +14,9 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
+open Unix 
+
+type port = int64
 (* TODO better categorisation needed (wildcard matches, etc) *)
 type service =
   | HTTP
@@ -81,6 +84,7 @@ let make_node ?(cap=Enabled) ~name =
 let node_to_string n =
   Printf.sprintf "%s (%s)" n.name
     (match n.cap with |Enabled -> "Enabled" |Dumb -> "Dumb")
+
 
 (**
   * The OrderedNode module makes the node type into a COMPARABLE, with the

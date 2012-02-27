@@ -16,6 +16,8 @@
 
 open Printf
 open Int64
+open Unix
+open Re_str
 
 type node = {
   signalling_channel: Sp.signalling_channel;
@@ -76,6 +78,22 @@ let signalling_channel name =
   | Sp.NoSignallingChannel -> raise Not_found
   | Sp.SignallingChannel(ip, port) -> (ip, port)
   
+let get_local_ip () =
+  Printf.printf "fetching local ip information \n%!"; 
+  let ip_stream = (Unix.open_process_in 
+    "ip addr show | grep \"inet \" | awk '{print $2}' | cut -d \\/ -f 1") in 
+  let buf = String.make 1500 ' ' in
+  let ips = Re_str.split (Re_str.regexp "\n") buf in 
+  let rec print_ips = function
+    | ip :: ips -> 
+        Printf.printf "ip: %s\n%!" ip; 
+        print_ips ips
+    | [] -> () 
+  in
+    print_ips ips;
+    let _ = input ip_stream buf 0 1500 in
+      Printf.printf "%s\n%!" buf
+
 
 (* It seems this is needed in order to have the compiler understand
  * the type of the hash table... nasty stuff. *)

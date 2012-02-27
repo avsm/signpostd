@@ -9,7 +9,7 @@ BuildTools:  ocamlbuild
 
 Library signpost
   Path:               lib
-  Pack:               true
+#  Pack:               true
   Findlibname:        signpost
   Modules:            Rpc
   BuildDepends:       lwt.syntax, lwt, re, lwt.unix, uri
