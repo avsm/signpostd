@@ -125,7 +125,7 @@ let fresh_id () =
   rpc_id_counter := !rpc_id_counter + 1;
   of_int !rpc_id_counter
 
-let create_rpc method_name args =
+let create_request method_name args =
   let id = fresh_id () in
   Request(method_name, args, id)
 
