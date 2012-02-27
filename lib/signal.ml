@@ -21,7 +21,7 @@ open Printf
 open Int64
 
 module type SignallingHandlerSig = sig
-  val handle_request : Rpc.command -> Rpc.arg list -> Sp.request_response
+  val handle_request : Rpc.command -> Rpc.arg list -> Sp.request_response Lwt.t
   val handle_notification : Rpc.command -> Rpc.arg list -> unit Lwt.t
   val handle_rpc : Rpc.rpc option -> unit Lwt.t
   val sa : Sp.ip * Sp.port
@@ -75,7 +75,8 @@ module Signalling (Handler : SignallingHandlerSig) = struct
     | Some(Response(r, e, id)) ->
         wake_up_thread_with_reply id (Response(r, e, id))
     | Some(Request(c, args, id)) -> begin
-        match (Handler.handle_request c args) with
+        lwt response = Handler.handle_request c args in
+        match response with
         | Sp.ResponseValue v -> begin
             let resp = (Rpc.create_response_ok v id) in
             send resp sa

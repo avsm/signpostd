@@ -38,7 +38,7 @@ let handle_rpc =
 
 let handle_request command args =
   eprintf "The server received a REQUEST RPC, but doesn't handle those.\n%!";
-  Sp.NoResponse
+  return Sp.NoResponse
 
 let handle_notification command args =
   eprintf "The server received a NOTIFCATION RPC, but doesn't handle those.\n%!";
