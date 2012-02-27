@@ -42,11 +42,8 @@ let connect a b =
       let node_a = addr_of (Nodes.signalling_channel a) in
       let node_b = addr_of (Nodes.signalling_channel b) in
       eprintf "Requesting the nodes ip addresses\n";
-      lwt [ips_a;ips_b] = Lwt_list.map_p (fun addr ->
-        let rpc = Rpc.create_request "get_local_ips" [] in
-        Signal.Server.send_with_response rpc addr >>= fun results ->
-        return (list_of_ips_from_string results)
-      ) [node_a; node_b] in
+      let ips_a = Nodes.get_local_ips a in
+      let ips_b = Nodes.get_local_ips b in
       eprintf "Have both nodes try to connect to all ips of the other\n";
       let node_a_listen = string_of_int(30000 + (Random.int 20000)) in
       let node_b_listen = string_of_int (30000 + (Random.int 20000)) in

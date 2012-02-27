@@ -54,6 +54,10 @@ let get_ip name =
     | Sp.NoSignallingChannel -> raise Not_found
     | Sp.SignallingChannel(ip, _port) -> ip
 
+let get_local_ips name =
+  let node = get name in
+  node.local_ips
+
 let get_local_ip () =
     let ip_stream = (Unix.open_process_in
     (Unix.getcwd () ^ "/../client_tactics/get_local_ips")) in
