@@ -16,7 +16,7 @@
 
 open Lwt 
 open Printf
-(* open Sp_controller *)
+open Sp_controller
 
 (* The domain we are authoritative for *)
 let our_domain =
@@ -96,7 +96,6 @@ i NS %s.
   Dns_server.listen ~fd ~src ~dnsfn
 
 let _ =
-  let daemon_t = join [ dns_t (); Signal.server_t () ] in
-  (* let daemon_t = join [ dns_t (); Signal.server_t (); */ 
-  /*       Sp_controller.listen () ] in *)
+  let daemon_t = join [ dns_t (); Signal.server_t ();
+                        Sp_controller.listen () ] in
   Lwt_main.run daemon_t
