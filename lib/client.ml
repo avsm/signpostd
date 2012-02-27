@@ -22,15 +22,13 @@ let node_name = ref "unknown"
 let node_ip = ref "unknown"
 let node_port = ref (of_int 0)
 
-let sa = (Signal.Client.addr_from Config.iodine_node_ip (of_int Config.signal_port))
-
 let usage () = eprintf "Usage: %s <node-name> <node-ip> <node-signalling-port>\n%!" Sys.argv.(0); exit 1
 
 let client_t () =
   let hello_rpc = Rpc.Hello (!node_name, !node_ip, !node_port) in
   let xmit_t =
     while_lwt true do
-      Signal.Client.send hello_rpc sa >>
+      Signal.Client.send hello_rpc Signal.Client.sa >>
       Lwt_unix.sleep 2.0
     done
   in
