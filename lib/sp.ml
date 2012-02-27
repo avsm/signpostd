@@ -27,6 +27,11 @@ type signalling_channel =
   | SignallingChannel of ip * port
   | NoSignallingChannel
 
+type request_response =
+  | ResponseValue of string
+  | ResponseError of string
+  | NoResponse
+
 module type TacticSig = sig
   val name : unit -> string
   (* val provides : unit -> channel_property list *)

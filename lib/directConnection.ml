@@ -30,10 +30,12 @@ let connect a b =
     try 
       let ip, port = Nodes.signalling_channel b in
       let sa = (Signal.Server.addr_from ip port) in
-      let rpc = Rpc.create_rpc "get_local_ips" [] in
-      Signal.Server.send rpc sa >>
-      let rpc = Rpc.create_rpc "try_connecting_to" ["foo"] in
-      Signal.Server.send rpc sa >>
+      let rpc = Rpc.create_request "get_local_ips" [] in
+      Signal.Server.send_with_response rpc sa >>= fun resp ->
+      eprintf "Got response 1: %s\n" resp;
+      let rpc = Rpc.create_request "try_connecting_to" ["foo"] in
+      Signal.Server.send_with_response rpc sa >>= fun resp ->
+      eprintf "Got response 2: %s\n" resp;
       let notification = Rpc.create_notification "test" ["foo";"bar"] in
       Signal.Server.send notification sa
     with Not_found -> return () in
