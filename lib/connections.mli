@@ -1,5 +1,5 @@
 (*
- * Copyright (c) 2012 Anil Madhavapeddy <anil@recoil.org>
+ * Copyright (c) 2012 Sebastian Probst Eide <sebastian.probst.eide@gmail.com>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -15,12 +15,7 @@
  *)
 
 
-open Lwt
-open Printf
-
-
-let tunnel_request ~src ~dst ~user ~password =
-  match (user = Config.user),(password = Config.password) with
-  |false ->
-    eprintf "Unknown user/password, ignoring tunnel: %s,%s\n%!" user password
-  |true ->
+val store_addresses : Sp.name -> Sp.name -> (Sp.ip * Sp.ip) list -> unit
+val set_public_ips : Sp.name -> Sp.ip list -> unit
+val lookup : Sp.name -> Sp.name -> Sp.addressable list
+val find : Sp.name -> Sp.name -> Sp.addressable list
