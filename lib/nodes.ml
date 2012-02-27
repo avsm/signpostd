@@ -19,34 +19,59 @@ open Int64
 
 type node = {
   signalling_channel: Sp.signalling_channel;
-  name: Sp.name
+  name: Sp.name;
+  local_ips: string list;
+}
+
+type nodes_state = {
+    nodes: (string, node) Hashtbl.t;
 }
 
 (* node name -> Sp.node *)
-let nodes = Hashtbl.create 1
+let node_db = {nodes=(Hashtbl.create 0);}
 
-let new_node_with_name name = {
+let new_node_with_name name ?(ips=[]) () = {
   name = name;
-  signalling_channel = Sp.NoSignallingChannel
+  signalling_channel = Sp.NoSignallingChannel;
+  local_ips = ips;
 }
 
 let update name node =
-  Hashtbl.replace nodes name node
+  Hashtbl.replace node_db.nodes name node
 
 let get name = 
-  try (Hashtbl.find nodes name)
-  with Not_found -> (new_node_with_name name)
+  try (Hashtbl.find node_db.nodes name)
+  with Not_found -> (new_node_with_name name () )
 
-let update_sig_channel name channel_ip port =
+let update_sig_channel name channel_ip port local_ips =
   let node = get name in
   let sch = Sp.SignallingChannel(channel_ip, port) in
-  update name {node with signalling_channel = sch}
+  (update name {name;signalling_channel=sch;local_ips;})
 
 let get_ip name =
   let node = get name in
   match node.signalling_channel with
     | Sp.NoSignallingChannel -> raise Not_found
     | Sp.SignallingChannel(ip, _port) -> ip
+
+let get_local_ips name =
+  let node = get name in
+  node.local_ips
+
+let get_local_ip () =
+    let ip_stream = (Unix.open_process_in
+    (Unix.getcwd () ^ "/client_tactics/get_local_ips")) in
+    let buf = String.make 1500 ' ' in
+    let len = input ip_stream buf 0 1500 in
+    let ips = Re_str.split (Re_str.regexp " ") (String.sub buf 0 (len-1)) in
+    let rec print_ips = function
+        | ip :: ips ->
+                Printf.printf "ip: %s\n%!" ip;
+                print_ips ips
+        | [] -> ()
+    in
+    ips 
+
 
 (* in int32 format for dns. default to 0.0.0.0 *)
 let get_node_ip name =
@@ -83,6 +108,7 @@ let testing =
   let name = "me" in
   let me = {
     name = name;
-    signalling_channel = Sp.SignallingChannel("127.0.0.1", (of_int 4444))
+    signalling_channel = Sp.SignallingChannel("127.0.0.1", (of_int 4444));
+    local_ips=(get_local_ip ())
   } in
   update name me

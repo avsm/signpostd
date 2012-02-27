@@ -4,6 +4,7 @@ set -e
 
 function main {
   ifconfig -a | 
+  sed -e "s/addr://g" |
   get_ipv4_addresses |
   exclude_local_addresses |
   exclude_signalling_channel_range |
@@ -11,7 +12,11 @@ function main {
 }
 
 function exclude_signalling_channel_range {
-  signalling_channel_range=`cat lib/config.ml | grep ip_slash_24 | awk '{print $4}'`
+    if [ -e lib/config.ml ]; then  
+      signalling_channel_range=`cat lib/config.ml | grep ip_slash_24 | awk '{print $4}'`
+  else 
+      signalling_channel_range=`cat ../lib/config.ml | grep ip_slash_24 | awk '{print $4}'`
+  fi
   grep -v -E "$signalling_channel_range"
 }
 

@@ -27,9 +27,9 @@ let handle_rpc =
   | None ->
       eprintf "warning: bad rpc\n%!";
       return ()
-  | Some(Hello(node, ip, port)) -> begin
+  | Some(Hello(node, ip, port, ips)) -> begin
       eprintf "rpc: hello %s -> %s:%Li\n%!" node ip port;
-      Nodes.update_sig_channel node ip port;
+      Nodes.update_sig_channel node ip port ips;
       return ()
   end
   | _ -> 
