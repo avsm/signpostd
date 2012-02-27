@@ -38,9 +38,11 @@ type rpc =
 
 let rpc_id_counter = ref 0
 
-let rec string_list_of_json_list = function 
-    | (Json.String ip) :: ips -> ([ip] @ (string_list_of_json_list ips))
-    | [(Json.String ip)] -> [ip]
+let rec string_list_of_json_list = function
+    | (Json.String(ip)) :: ips -> [ip] @ (string_list_of_json_list ips)
+    | [] -> []
+    | _ -> raise (Invalid_argument "Invalid arg on string_list_of_json_list")
+
 
 let rec json_list_of_string_list = function
     | ip :: ips -> [(Json.String ip)] @ (json_list_of_string_list ips)
@@ -90,7 +92,6 @@ let rpc_of_json =
   let open Json in
   function
       | Object [ "hello", (Array [String n; String i; Int p; Array ips]) ] ->
-
       Some (Hello (n,i, p, (string_list_of_json_list ips)))
   | Object [ "request", Object [
         ("method", String c);
@@ -128,7 +129,7 @@ let rpc_to_string rpc =
   Json.to_string (rpc_to_json rpc)
 
 let rpc_of_string s =
-  let json = try Some (Json.of_string s) with _ -> None in 
+  let json = try Some (Json.of_string s) with _ -> None in
   match json with
   | None -> None
   | Some x -> rpc_of_json x

@@ -9,6 +9,7 @@ fi
 
 cd ${d}
 PASS=`cat PASSWD`
-killall iodined
-iodined -F /tmp/iodine.pid -P "${PASS}" -c -b 5354 172.16.9.1/24 i.d1.signpo.st
+if [ "`ps -e | grep iodined | wc -l `" -eq 0 ]; then
+    iodined -F /tmp/iodine.pid -P "${PASS}" -c -b 5354 172.16.9.1/24 i.d1.signpo.st;
+fi
 ../server.native
