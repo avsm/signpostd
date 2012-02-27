@@ -4,6 +4,7 @@ set -e
 
 function main {
   ifconfig -a | 
+  sed -e "s/addr://g" |
   get_ipv4_addresses |
   exclude_local_addresses |
   exclude_signalling_channel_range |
