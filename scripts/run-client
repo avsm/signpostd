@@ -3,10 +3,10 @@ set -ex
 
 NS=10.10.0.1
 
-killall iodine || true
-sleep 1
 PASS=`cat scripts/PASSWD`
-iodine -r -P ${PASS} $NS i.d1.signpo.st
+if [ "`ps -e | grep iodine | wc -l `" -eq 0 ]; then
+    iodine -r -P ${PASS} $NS i.d1.signpo.st;
+fi
 
 if [ "`ifconfig | grep tun0 | wc -l`" -gt 0 ]; then
     IP=`ifconfig tun0 |grep 172.16 | awk '{print $2}'`;
