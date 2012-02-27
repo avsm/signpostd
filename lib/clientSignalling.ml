@@ -18,12 +18,6 @@ open Lwt
 open Printf
 open Int64
 
-let sa = (Config.iodine_node_ip, (of_int Config.signal_port))
-
-let handle_rpc rpc =
-  eprintf "ERROR: Client doesn't handle arbitrary RPCs\n%!";
-  return ()
-
 let execute_tactic cmd arg_list =
   let open Lwt_process in
   let command = Unix.getcwd () ^ "/client_tactics/" ^ cmd in
@@ -33,6 +27,12 @@ let execute_tactic cmd arg_list =
   let cmd = shell full_command in
   pread ~timeout:10.0 cmd >>= fun value ->
   return value
+
+let sa = (Config.iodine_node_ip, (of_int Config.signal_port))
+
+let handle_rpc rpc =
+  eprintf "ERROR: Client doesn't handle arbitrary RPCs\n%!";
+  return ()
 
 let handle_request command arg_list =
   let args = String.concat ", " arg_list in
