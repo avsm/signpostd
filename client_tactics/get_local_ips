@@ -1,0 +1,29 @@
+#! /usr/bin/env bash
+
+set -e
+
+function main {
+  ifconfig -a | 
+  sed -e "s/addr://g" |
+  get_ipv4_addresses |
+  exclude_local_addresses |
+  exclude_signalling_channel_range |
+  xargs
+}
+
+function exclude_signalling_channel_range {
+  signalling_channel_range=`cat lib/config.ml | grep ip_slash_24 | awk '{print $4}'`
+  grep -v -E "$signalling_channel_range"
+}
+
+function exclude_local_addresses {
+  grep -v -E "(127\.0)"
+}
+
+function get_ipv4_addresses {
+  grep inet | 
+  grep -v inet6 | 
+  awk '{print $2}' 
+}
+
+main;
