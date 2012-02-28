@@ -17,7 +17,6 @@
 open Lwt
 open Printf
 open Int64
-open Nodes
 
 let node_name = ref "unknown"
 let node_ip = ref "unknown"
