@@ -54,7 +54,11 @@ module Signalling (Handler : SignallingHandlerSig) = struct
   let send_with_response rpc dst =
     let open Rpc in
     let sleeper, wakener = Lwt.wait () in
-    let Request(_, _, id) = rpc in
+    let id = match rpc with
+    | Request(_, _, id) -> id
+    | Tactic_request (_, _, _, id) -> id
+    | _ -> raise Client_error("Invalid rpc send ") 
+    in
     register_sender id wakener;
     send rpc dst;
     sleeper >>= fun result ->
