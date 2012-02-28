@@ -99,15 +99,3 @@ let signalling_channel name =
   match node.signalling_channel with
   | Sp.NoSignallingChannel -> raise Not_found
   | Sp.SignallingChannel(ip, port) -> (ip, port)
-  
-
-(* It seems this is needed in order to have the compiler understand
- * the type of the hash table... nasty stuff. *)
-let testing = 
-  let name = "me" in
-  let me = {
-    name = name;
-    signalling_channel = Sp.SignallingChannel("127.0.0.1", (of_int 4444));
-    local_ips=(get_local_ip ())
-  } in
-  update name me
