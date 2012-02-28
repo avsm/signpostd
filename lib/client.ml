@@ -21,15 +21,25 @@ open Int64
 let node_name = ref "unknown"
 let node_ip = ref "unknown"
 let node_port = ref (of_int 0)
+let local_ips = ref []
 
 let usage () = eprintf "Usage: %s <node-name> <node-ip> <node-signalling-port>\n%!" Sys.argv.(0); exit 1
 
+let update_server_if_state_has_changed () =
+  let ips = Nodes.discover_local_ips () in
+  match (ips <> !local_ips) with
+  | true -> begin
+      local_ips := ips;
+      let hello_rpc = Rpc.Hello (!node_name, !node_ip, !node_port, ips) in
+      Signal.Client.send hello_rpc Signal.Client.sa
+  end
+  | false ->
+      return ()
+
 let client_t () =
-  let hello_rpc = Rpc.Hello (!node_name, !node_ip, !node_port, 
-        (Nodes.get_local_ip ())) in
   let xmit_t =
     while_lwt true do
-      Signal.Client.send hello_rpc Signal.Client.sa >>
+      update_server_if_state_has_changed ();
       Lwt_unix.sleep 2.0
     done
   in
