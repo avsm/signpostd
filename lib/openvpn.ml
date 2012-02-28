@@ -27,12 +27,38 @@ module Manager = struct
   type conn_db_type = {
     conns : (int, conn_type) Hashtbl.t;
     mutable max_id : int;
+    mutable can: unit Lwt.t option;
   }
 
-  let conn_db = {conns=(Hashtbl.create 0); max_id=0;}
+  let conn_db = {conns=(Hashtbl.create 0); max_id=0; can=None;}
+
+  let run_server port = 
+    let s, w = Lwt.task () in 
+    conn_db.can <- Some(s);
+    while_lwt true do 
+      return (Printf.printf "in server thread \n%!")
+     done 
 
   let test args =
-    return ("OK")
+    let typ = List.hd args in
+    match typ with
+    | "server_start" -> (
+      (* start udp server *)
+      let port port = List.hd args in 
+      let s, w = Lwt.task () in 
+      conn_db.can <- Some(s);
+      let _ = run_server port in
+        return ("OK")
+    )
+    | "server_stop" -> (
+      match conn_db.can with
+      | Some t ->
+        cancel t;
+        conn_db.can <- None;
+        return ("OK")
+    | None ->
+          return ("OK")
+    )
 
   let connect args =
     let conn_id = conn_db.max_id + 1 in 
