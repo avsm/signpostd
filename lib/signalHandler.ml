@@ -88,5 +88,3 @@ module Make (Handler : HandlerSig) = struct
       dispatch_rpc rpc
     done
 end
-
-module Client = Make (ClientSignalling)
