@@ -45,3 +45,17 @@ let handle_notification command arg_list =
   eprintf "NOTIFICATION: %s with args %s\n%!" command args;
   execute_tactic command arg_list >>= fun _ ->
   return ()
+
+exception Tactic_error of string
+
+let handle_tactic_request tactic act args =
+    match tactic with
+    | "openvpn" ->( 
+        match act with 
+            | Rpc.TEST -> (Openvpn.Manager.test args >>= 
+                fun v -> return(Sp.ResponseValue v))
+            | _ -> raise (Tactic_error((Printf.sprintf "not implemented %s %s"
+            tactic (Rpc.string_of_action act))))
+            )
+    | _ -> raise (Tactic_error((Printf.sprintf "not implemented %s %s" tactic
+        (Rpc.string_of_action act))))
