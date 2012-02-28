@@ -18,18 +18,16 @@ open Lwt
 open Printf
 open Int64
 
-(* FIXME: This is ugly... The server doesn't have a one place *)
-(* packet destination, so we set this address to "dev/null" *)
-let sa = ("0.0.0.0", (of_int 0))
-
 let handle_rpc =
   let open Rpc in function
   | None ->
       eprintf "warning: bad rpc\n%!";
       return ()
-  | Some(Hello(node, ip, port, ips)) -> begin
+  | Some(Hello(node, ip, port, local_ips)) -> begin
       eprintf "rpc: hello %s -> %s:%Li\n%!" node ip port;
-      Nodes.update_sig_channel node ip port ips;
+      Nodes.set_signalling_channel node ip port;
+      Nodes.set_local_ips node local_ips;
+      Nodes.check_if_the_ips_are_publicly_accessible node local_ips;
       return ()
   end
   | _ -> 

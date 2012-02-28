@@ -14,13 +14,20 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
+open Lwt
 open Printf
 open Int64
 
+(* ---------------------------------------------------------------------- *)
+
+(* Nodes have a lot of associated information.
+ * It is all part of the node store.
+ *)
 type node = {
   signalling_channel: Sp.signalling_channel;
   name: Sp.name;
-  local_ips: string list;
+  local_ips: Sp.ip list;
+  public_ips : Sp.ip list
 }
 
 type nodes_state = {
@@ -30,10 +37,11 @@ type nodes_state = {
 (* node name -> Sp.node *)
 let node_db = {nodes=(Hashtbl.create 0);}
 
-let new_node_with_name name ?(ips=[]) () = {
+let new_node_with_name name ?(ips=[]) ?(public_ips=[]) () = {
   name = name;
   signalling_channel = Sp.NoSignallingChannel;
   local_ips = ips;
+  public_ips = [];
 }
 
 let update name node =
@@ -42,11 +50,6 @@ let update name node =
 let get name = 
   try (Hashtbl.find node_db.nodes name)
   with Not_found -> (new_node_with_name name () )
-
-let update_sig_channel name channel_ip port local_ips =
-  let node = get name in
-  let sch = Sp.SignallingChannel(channel_ip, port) in
-  (update name {name;signalling_channel=sch;local_ips;})
 
 let get_ip name =
   let node = get name in
@@ -57,6 +60,81 @@ let get_ip name =
 let get_local_ips name =
   let node = get name in
   node.local_ips
+
+(* ---------------------------------------------------------------------- *)
+
+(* Sending RPC's to nodes, are defined as part of the Nodes module
+ * functionality, in order to break som nasty circular dependencies.
+ * Not ideal from a design perspective, but not catastrophic either.
+ *
+ * Sending RPCs: 
+ *)
+(* id -> handler *)
+
+let signalling_channel name =
+  let node = get name in
+  match node.signalling_channel with
+  | Sp.NoSignallingChannel -> raise Not_found
+  | Sp.SignallingChannel(ip, port) -> (ip, port)
+
+let pending_responses = Hashtbl.create 1
+
+let addr_from ip port = 
+  Unix.(ADDR_INET (inet_addr_of_string ip, (to_int port)))
+
+let send_fd = Lwt_unix.(socket PF_INET SOCK_DGRAM 0)
+
+let register_sender id wakeup_cbk = 
+  Hashtbl.replace pending_responses id wakeup_cbk
+
+let send_datagram text dst =
+  Lwt_unix.sendto send_fd text 0 (String.length text) [] dst
+
+let send_to_addr addr rpc = 
+  let buf = Rpc.rpc_to_string rpc in
+  lwt len' = send_datagram buf addr in
+  return (eprintf "sent [%d]: %s\n%!" len' buf)
+
+let send name rpc =
+  let ip, port = signalling_channel name in
+  let dst = addr_from ip port in
+  send_to_addr dst rpc
+
+let send_to_server rpc =
+  let ip = Config.iodine_node_ip in
+  let port = of_int Config.signal_port in
+  let server = addr_from ip port in
+  send_to_addr server rpc
+
+let send_blocking name rpc =
+  let open Rpc in
+  let sleeper, wakener = Lwt.wait () in
+  let Request(_, _, id) = rpc in
+  register_sender id wakener;
+  send name rpc;
+  sleeper >>= fun result ->
+  match result with
+  | Response(Result r, _, _) -> return r
+  | Response(_, Error e, _) -> raise Sp.Client_error e
+
+let wake_up_thread_with_reply id data =
+  try 
+    let wakener = Hashtbl.find pending_responses id in
+    Hashtbl.remove pending_responses id;
+    return (Lwt.wakeup wakener data)
+  with Not_found -> return ()
+
+(* ---------------------------------------------------------------------- *)
+
+(* Public API *)
+let set_signalling_channel name channel_ip port =
+  let node = get name in
+  let sch = Sp.SignallingChannel(channel_ip, port) in
+  update name {node with signalling_channel = sch}
+
+let set_local_ips name local_ips =
+  let node = get name in
+  update name {node with local_ips = local_ips}
 
 let discover_local_ips () =
   let ip_stream = (Unix.open_process_in
@@ -94,8 +172,38 @@ let get_node_ip name =
   in
   ip
 
-let signalling_channel name =
-  let node = get name in
-  match node.signalling_channel with
-  | Sp.NoSignallingChannel -> raise Not_found
-  | Sp.SignallingChannel(ip, port) -> (ip, port)
+let check_if_the_ips_are_publicly_accessible name ips =
+  let token = "hi-from-server" in
+  let listen_port = 30000 + (Random.int 20000) in
+  let list_of_ips_from_string ip_str =
+    let open Re_str in
+    let remove_character_return = regexp "\n" in
+    let on_whitespace = regexp " " in
+    let chomped_str = global_replace remove_character_return "" ip_str in
+    split on_whitespace chomped_str 
+  in
+  let listen_for_datagrams () =
+    let args = (string_of_int listen_port) :: token :: [] in
+    let rpc = Rpc.create_request "listen_for_datagrams" args in
+    send_blocking name rpc >>= fun results ->
+    let public_ips = list_of_ips_from_string results in
+    let node = get name in
+    update name {node with public_ips = public_ips};
+    List.iter (fun ip -> eprintf "Received for %s\n%!" ip) (list_of_ips_from_string results);
+    return ()
+  in
+  let send_datagrams () =
+    (* Wait for a while to allow the RPC to reach the client first. *)
+    Lwt_unix.sleep 1.0 >>
+    return (eprintf "Starting to send datagrams to the client:\n%!") >>
+    Lwt_list.iter_p (fun ip ->
+      let target = addr_from ip (of_int listen_port) in
+      let msg = sprintf "%s-%s" token ip in
+      eprintf "Sent datagram %s\n%!" msg;
+      send_datagram msg target >>
+      return ()
+    ) ips
+  in
+  Lwt_list.iter_p (fun f -> f ()) [listen_for_datagrams;send_datagrams]
+
+(* ---------------------------------------------------------------------- *)

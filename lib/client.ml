@@ -31,7 +31,7 @@ let update_server_if_state_has_changed () =
   | true -> begin
       local_ips := ips;
       let hello_rpc = Rpc.Hello (!node_name, !node_ip, !node_port, ips) in
-      Signal.Client.send hello_rpc Signal.Client.sa
+      Nodes.send_to_server hello_rpc
   end
   | false ->
       return ()
@@ -45,6 +45,11 @@ let client_t () =
   in
   xmit_t
 
+module IncomingSignalling = SignalHandler.Make (ClientSignalling)
+
+let signal_t ~port =
+  IncomingSignalling.thread ~address:"0.0.0.0" ~port
+
 let _ =
   (try node_name := Sys.argv.(1) with _ -> usage ());
   (try node_ip := Sys.argv.(2) with _ -> usage ());
@@ -52,6 +57,6 @@ let _ =
   let daemon_t = join 
   [ 
     client_t (); 
-    Signal.client_t ~port:!node_port
+    signal_t ~port:!node_port
   ] in
   Lwt_main.run daemon_t

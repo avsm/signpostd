@@ -25,10 +25,8 @@ let execute_tactic cmd arg_list =
   let full_command = command ^ " " ^ args in
   eprintf "Executing RPC '%s'.\n%!" full_command;
   let cmd = shell full_command in
-  pread ~timeout:10.0 cmd >>= fun value ->
+  pread ~timeout:120.0 cmd >>= fun value ->
   return value
-
-let sa = (Config.iodine_node_ip, (of_int Config.signal_port))
 
 let handle_rpc rpc =
   eprintf "ERROR: Client doesn't handle arbitrary RPCs\n%!";
