@@ -220,3 +220,10 @@ let create_tactic_response tactic result error args =
   let id = fresh_id () in
   Tactic_request(tactic, result, error , id)
 
+let create_tactic_response_ok tactic result id =
+    Tactic_response (tactic, Result(result), 
+    NoError, id) 
+
+let create_tactic_response_err tactic err id =
+    Tactic_response (tactic, NoResult, Error(err), id) 
+

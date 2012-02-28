@@ -23,6 +23,8 @@ open Int64
 module type SignallingHandlerSig = sig
   val handle_request : Rpc.command -> Rpc.arg list -> Sp.request_response Lwt.t
   val handle_notification : Rpc.command -> Rpc.arg list -> unit Lwt.t
+  val handle_tactic_request : string -> Rpc.action -> string list ->
+    Sp.request_response Lwt.t
   val handle_rpc : Rpc.rpc option -> unit Lwt.t
   val sa : Sp.ip * Sp.port
 end
@@ -34,7 +36,6 @@ module Signalling (Handler : SignallingHandlerSig) = struct
   let pending_responses = Hashtbl.create 1
 
   let addr_from ip port = 
-    eprintf "Creating destiantion %s:%Ld\n" ip port;
     Unix.(ADDR_INET (inet_addr_of_string ip, (to_int port)))
 
   let sa = 
@@ -75,7 +76,13 @@ module Signalling (Handler : SignallingHandlerSig) = struct
 
   let dispatch_rpc rpc = 
     let open Rpc in
-    match rpc with 
+    match rpc with
+    | Some(Tactic_request(tactic, act, args, id)) ->(
+      lwt v = (Handler.handle_tactic_request tactic act args) in
+      match v with
+      | Sp.ResponseValue v -> send (Rpc.create_tactic_response_ok tactic v id) sa
+      | Sp.ResponseError e -> send (Rpc.create_tactic_response_err tactic e id) sa
+      | Sp.NoResponse -> return ())
     | Some(Response(r, e, id)) ->
         wake_up_thread_with_reply id (Response(r, e, id))
     | Some(Request(c, args, id)) -> begin

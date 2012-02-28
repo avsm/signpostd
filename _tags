@@ -15,11 +15,15 @@
 "_darcs": not_hygienic
 # Library signpost
 "lib": include
+"lib/tactics": include
 "lib/rpc.cmx": for-pack(Signpost)
 "lib/Rpc.cmx": for-pack(Signpost)
 <lib/*.ml{,i}>: pkg_uri
 <lib/*.ml{,i}>: pkg_re
 <lib/*.ml{,i}>: pkg_lwt
+<lib/tactics/*.ml{,i}>: pkg_uri
+<lib/tactics/*.ml{,i}>: pkg_re
+<lib/tactics/*.ml{,i}>: pkg_lwt
 # Executable client
 <lib/client.{native,byte}>: pkg_lwt.unix
 <lib/client.{native,byte}>: pkg_lwt.syntax
