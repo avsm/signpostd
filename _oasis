@@ -20,7 +20,7 @@ Executable server
   Custom:             true
   CompiledObject:     best
   Install:            false
-  BuildDepends:       lwt.syntax,lwt.unix,ocamlgraph,dns,dns.server
+  BuildDepends:       lwt.syntax,lwt.unix,ocamlgraph,dns,dns.server,re,re.str
 
 Executable client
   Path:               lib
@@ -28,4 +28,4 @@ Executable client
   Custom:             true
   CompiledObject:     best
   Install:            false
-  BuildDepends:       lwt.syntax,lwt.unix
+  BuildDepends:       lwt.syntax,lwt.unix,re,re.str
