@@ -56,9 +56,13 @@ let get_ip name =
     | Sp.NoSignallingChannel -> raise Not_found
     | Sp.SignallingChannel(ip, _port) -> ip
 
+let get_local_ips name =
+  let node = get name in
+  node.local_ips
+
 let get_local_ip () =
     let ip_stream = (Unix.open_process_in
-    (Unix.getcwd () ^ "/client_tactics/get_local_ips")) in
+    (Unix.getcwd () ^ "/../client_tactics/get_local_ips")) in
     let buf = String.make 1500 ' ' in
     let len = input ip_stream buf 0 1500 in
     let ips = Re_str.split (Re_str.regexp " ") (String.sub buf 0 (len-1)) in
