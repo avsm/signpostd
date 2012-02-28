@@ -24,7 +24,7 @@ type node = {
 }
 
 type nodes_state = {
-    nodes: (string, node) Hashtbl.t;
+  nodes: (string, node) Hashtbl.t;
 }
 
 (* node name -> Sp.node *)
@@ -58,20 +58,19 @@ let get_local_ips name =
   let node = get name in
   node.local_ips
 
-let get_local_ip () =
-    let ip_stream = (Unix.open_process_in
-    (Unix.getcwd () ^ "/client_tactics/get_local_ips")) in
-    let buf = String.make 1500 ' ' in
-    let len = input ip_stream buf 0 1500 in
-    let ips = Re_str.split (Re_str.regexp " ") (String.sub buf 0 (len-1)) in
-    let rec print_ips = function
-        | ip :: ips ->
-                Printf.printf "ip: %s\n%!" ip;
-                print_ips ips
-        | [] -> ()
-    in
-    ips 
-
+let discover_local_ips () =
+  let ip_stream = (Unix.open_process_in
+  (Unix.getcwd () ^ "/client_tactics/get_local_ips")) in
+  let buf = String.make 1500 ' ' in
+  let len = input ip_stream buf 0 1500 in
+  let ips = Re_str.split (Re_str.regexp " ") (String.sub buf 0 (len-1)) in
+  let rec print_ips = function
+    | ip :: ips ->
+        Printf.printf "ip: %s\n%!" ip;
+        print_ips ips
+    | [] -> ()
+  in
+  ips 
 
 (* in int32 format for dns. default to 0.0.0.0 *)
 let get_node_ip name =
