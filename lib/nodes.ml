@@ -195,7 +195,6 @@ let check_if_the_ips_are_publicly_accessible name ips =
   let send_datagrams () =
     (* Wait for a while to allow the RPC to reach the client first. *)
     Lwt_unix.sleep 1.0 >>
-    return (eprintf "Starting to send datagrams to the client:\n%!") >>
     Lwt_list.iter_p (fun ip ->
       let target = addr_from ip (of_int listen_port) in
       let msg = sprintf "%s-%s" token ip in
