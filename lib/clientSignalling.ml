@@ -49,13 +49,19 @@ let handle_notification command arg_list =
 exception Tactic_error of string
 
 let handle_tactic_request tactic act args =
+    try 
     match tactic with
-    | "openvpn" ->( 
+    | "openvpn" ->(
         match act with 
-            | Rpc.TEST -> (Openvpn.Manager.test args >>= 
-                fun v -> return(Sp.ResponseValue v))
+            | Rpc.TEST -> 
+                    Printf.printf "Openvpn run action found\n%!";
+                    lwt v = (Openvpn.Manager.test args) in
+                        return(Sp.ResponseValue v)
             | _ -> raise (Tactic_error((Printf.sprintf "not implemented %s %s"
             tactic (Rpc.string_of_action act))))
             )
     | _ -> raise (Tactic_error((Printf.sprintf "not implemented %s %s" tactic
         (Rpc.string_of_action act))))
+    with exn ->
+        Printf.printf "Exception captured in client handler\n%!";
+        return(Sp.ResponseError("Exception captured in client handler"))
