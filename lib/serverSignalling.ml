@@ -40,6 +40,10 @@ let handle_request command args =
   eprintf "The server received a REQUEST RPC, but doesn't handle those.\n%!";
   return Sp.NoResponse
 
+let handle_tactic_request tactic action args =
+  eprintf "The server received a REQUEST RPC, but doesn't handle those.\n%!";
+  return Sp.NoResponse
+
 let handle_notification command args =
   eprintf "The server received a NOTIFCATION RPC, but doesn't handle those.\n%!";
   return ()

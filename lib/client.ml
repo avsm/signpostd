@@ -31,7 +31,7 @@ let client_t () =
   let xmit_t =
     while_lwt true do
       Signal.Client.send hello_rpc Signal.Client.sa >>
-      Lwt_unix.sleep 2.0
+      Lwt_unix.sleep 120.0
     done
   in
   xmit_t
