@@ -31,6 +31,7 @@ end
 
 module Signalling (Handler : SignallingHandlerSig) = struct
   exception Client_error
+  exception Signal_error of string
 
   (* id -> handler *)
   let pending_responses = Hashtbl.create 1
@@ -64,8 +65,11 @@ module Signalling (Handler : SignallingHandlerSig) = struct
     send rpc dst;
     sleeper >>= fun result ->
     match result with
+    | Tactic_response(_, Result r, _,_) -> return r
+    | Tactic_response(_, _, Error e, _) -> raise Client_error e
     | Response(Result r, _, _) -> return r
     | Response(_, Error e, _) -> raise Client_error e
+    | _ -> raise(Signal_error("Invalid response received"))
 
   let wake_up_thread_with_reply id data =
     try 
@@ -83,6 +87,8 @@ module Signalling (Handler : SignallingHandlerSig) = struct
       | Sp.ResponseValue v -> send (Rpc.create_tactic_response_ok tactic v id) sa
       | Sp.ResponseError e -> send (Rpc.create_tactic_response_err tactic e id) sa
       | Sp.NoResponse -> return ())
+    | Some(Tactic_response(t, r, e, id)) ->
+        wake_up_thread_with_reply id (Tactic_response(t, r, e, id))    
     | Some(Response(r, e, id)) ->
         wake_up_thread_with_reply id (Response(r, e, id))
     | Some(Request(c, args, id)) -> begin

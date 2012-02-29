@@ -24,4 +24,5 @@
 # OASIS_STOP
 <lib/*.ml{,i}>: syntax_camlp4o
 <lib/*.ml{,i}>: pkg_lwt.syntax
+<lib/tactics/*.ml{,i}>: pkg_lwt.syntax
 true: annot
