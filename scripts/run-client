@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -ex
 
-NS=10.10.0.1
+NS="192.168.56.101"
 
 PASS=`cat scripts/PASSWD`
-if [ "`ps -e | grep iodine | wc -l `" -eq 0 ]; then
-    iodine -r -P ${PASS} $NS i.d1.signpo.st;
+if [ "`ps -e | grep iodine | wc -l `" -lt 2 ]; then
+    iodine -r -P ${PASS} $NS i.d2.signpo.st;
 fi
 
-if [ "`ifconfig | grep tun0 | wc -l`" -gt 0 ]; then
+if [ "`ifconfig | grep -E "^tun0" | wc -l`" -gt 0 ]; then
     IP=`ifconfig tun0 |grep 172.16 | awk '{print $2}'`;
 else
     if [ "`ifconfig | grep dns0 | wc -l`" -gt 0 ]; then 
@@ -18,5 +18,5 @@ else
         exit 1
     fi
 fi
-SIG_PORT=3340
+SIG_PORT=42425
 ./client.native `hostname -s` $IP $SIG_PORT
