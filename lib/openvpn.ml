@@ -33,22 +33,28 @@ exception OpenVpnError of string
     conns : (int, conn_type) Hashtbl.t;
     mutable max_id : int;
     mutable can: unit Lwt.t option;
+    mutable fd: file_descr option;
   }
 
-  let conn_db = {conns=(Hashtbl.create 0); max_id=0; can=None;}
+  let conn_db = {conns=(Hashtbl.create 0); max_id=0; can=None;fd=None;}
 
-  let run_server port = 
+  let run_server port =
+    Printf.printf "Starting udp server\n%!";
     let buf = String.create 1500 in
-    let sock = Lwt_unix.socket Lwt_unix.PF_INET Lwt_unix.SOCK_DGRAM
-              (Unix.getprotobyname "udp").Unix.p_proto in   
-    try
+    let sock =Lwt_unix.socket Lwt_unix.PF_INET Lwt_unix.SOCK_DGRAM
+              (Unix.getprotobyname "udp").Unix.p_proto in
+    let _ = try
         (Lwt_unix.bind sock (Lwt_unix.ADDR_INET (Unix.inet_addr_any,
-        port)));
-    with exn -> 
-      raise (OpenVpnError("Couldn't be a udp server"));
+        port)))
+       with Unix.Unix_error (e, _, _) ->
+      Printf.printf "error: %s\n%!" (Unix.error_message e);
+      raise (OpenVpnError("Couldn't be a udp server"))
+    in
+    conn_db.fd <- Some(sock);
 
     conn_db.can <- Some(while_lwt true do
         lwt (len, ip) = Lwt_unix.recvfrom sock buf 0 1500 [] in
+        lwt _ = Lwt_unix.sendto sock (String.sub buf 0 len) 0 len [] ip in
             return (Printf.printf "received %s\n%!" 
                 (String.sub buf 0 len) )
         done)
@@ -78,11 +84,13 @@ exception OpenVpnError of string
       return ((String.sub buf 0 len))
 
   let test args =
-   let typ = List.hd args in
+   let typ :: args = args in
     match typ with
     | "server_start" -> (
       (* start udp server *)
-      let port = int_of_string (List.hd args) in 
+      Printf.printf "starting server...\n%!";
+      let port = (int_of_string (List.hd args)) in 
+      Printf.printf "starting server on port %d...\n%!" port;
       let _ = run_server port in
         return ("OK")
     )
@@ -92,9 +100,12 @@ exception OpenVpnError of string
       | Some t ->
         cancel t;
         conn_db.can <- None;
+        (match conn_db.fd with
+        | Some(fd) -> 
+            (Lwt_unix.close fd; conn_db.fd <- None)
+        | _ -> ());
         return ("OK")
-      | _ ->
-          return ("OK")
+      | _ -> return ("OK")
           )
     | "client" -> (
       let port = (int_of_string (List.hd args)) in 
@@ -102,6 +113,8 @@ exception OpenVpnError of string
         (Printf.printf "Received a reply from ip %s \n%!" ip);
         return (ip)
     )
+    | _ ->  Printf.printf "Action %s not supported in test" typ;
+    return ("OK")
 
   let connect args =
     let conn_id = conn_db.max_id + 1 in 
