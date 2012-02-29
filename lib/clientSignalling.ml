@@ -64,5 +64,6 @@ let handle_tactic_request tactic act args =
     | _ -> raise (Tactic_error((Printf.sprintf "not implemented %s %s" tactic
         (Rpc.string_of_action act))))
     with exn ->
-        Printf.printf "Exception captured in client handler\n%!";
+        Printf.printf "Exception captured in client handler %s\n%!"
+         (Printexc.to_string exn) ;
         return(Sp.ResponseError("Exception captured in client handler"))

@@ -59,7 +59,7 @@ exception OpenVpnError of string
                 (String.sub buf 0 len) )
         done)
 
-  let run_client port ips = 
+  let run_client port ips =
     let buf = String.create 1500 in
     let sock = Lwt_unix.socket Lwt_unix.PF_INET Lwt_unix.SOCK_DGRAM
               (Unix.getprotobyname "udp").Unix.p_proto in   
@@ -67,7 +67,11 @@ exception OpenVpnError of string
       (* Make this a bit more random*)
         (Lwt_unix.bind sock (Lwt_unix.ADDR_INET (Unix.inet_addr_any,
         10000)))
-    with exn -> 
+  with 
+      | Unix.Unix_error (e, _, _) ->
+        Printf.eprintf "error: %s\n%!" (Unix.error_message e);
+      raise (OpenVpnError("Couldn't be a udp server"))
+      | exn -> Printf.eprintf "error: %s\n%!" (Printexc.to_string exn);
       raise (OpenVpnError("Couldn't be a udp server"))
     in
 
@@ -81,10 +85,11 @@ exception OpenVpnError of string
 
      let _ = List.iter (send_pkt_to port) ips in 
       lwt (len, _) = Lwt_unix.recvfrom sock buf 0 1500 [] in
+      lwt _ = Lwt_unix.close sock in
       return ((String.sub buf 0 len))
 
   let test args =
-   let typ :: args = args in
+   let typ::args = args in
     match typ with
     | "server_start" -> (
       (* start udp server *)
@@ -108,8 +113,9 @@ exception OpenVpnError of string
       | _ -> return ("OK")
           )
     | "client" -> (
-      let port = (int_of_string (List.hd args)) in 
-      lwt ip = run_client port args in
+      let port :: ips = args in 
+        Printf.printf "starting client.. %s\n" port;
+      lwt ip = run_client (int_of_string port) ips in
         (Printf.printf "Received a reply from ip %s \n%!" ip);
         return (ip)
     )
