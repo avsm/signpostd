@@ -30,12 +30,28 @@ let name () = "OpenVPN connection"
 
 let pairwise_connection_test a b =
   let (dst_ip, dst_port) = Nodes.signalling_channel a in
-  let rpc = (Rpc.create_tactic_request "openvpnv" 
-  Rpc.TEST ["server"; (string_of_int openvpn_port)]) in
-  let res = (Signal.Server.send_with_response rpc
+  let rpc = (Rpc.create_tactic_request "openvpn" 
+  Rpc.TEST ["server_start"; (string_of_int openvpn_port)]) in
+  lwt res = (Signal.Server.send_with_response rpc
     (Lwt_unix.ADDR_INET((Unix.inet_addr_of_string dst_ip), 
-        (Int64.to_int dst_port)))) in 
-  (true, "127.0.0.2")
+        (Int64.to_int dst_port)))) in
+  
+  let (dst_ip, dst_port) = Nodes.signalling_channel b in
+  let ips = Nodes.get_local_ips a in 
+  let rpc = (Rpc.create_tactic_request "openvpn" 
+  Rpc.TEST (["client"; (string_of_int openvpn_port)] @ ips)) in
+    lwt res = (Signal.Server.send_with_response rpc
+        (Lwt_unix.ADDR_INET((Unix.inet_addr_of_string dst_ip), 
+            (Int64.to_int dst_port)))) in 
+  
+  let (dst_ip, dst_port) = Nodes.signalling_channel a in
+  let rpc = (Rpc.create_tactic_request "openvpn" 
+  Rpc.TEST ["server_stop"; (string_of_int openvpn_port)]) in
+  lwt res = (Signal.Server.send_with_response rpc
+      (Lwt_unix.ADDR_INET((Unix.inet_addr_of_string dst_ip), 
+          (Int64.to_int dst_port)))) in 
+   return ()
+(*    (true, "127.0.0.2") *)
 
 let pairwise_connection_establish a b =
   return ()
@@ -44,10 +60,9 @@ let addr_of (ip, port) =
   (Signal.Server.addr_from ip port)
 
 let connect a b =
-  let node_a = addr_of (Nodes.signalling_channel a) in
-  let node_b = addr_of (Nodes.signalling_channel b) in
   eprintf "Requesting the nodes ip addresses\n";
-  pairwise_connection_establish a b >> return ()
+  let _ = pairwise_connection_test a b in 
+    return ()
   (*
   (* Setup a server on b on openvpn port and ask a to connect to it *)
   let (result, ip) = pairwise_connection_test a b in 
