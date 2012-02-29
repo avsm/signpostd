@@ -72,9 +72,7 @@ end
 $dir = Dir.pwd
 
 def allowed_file? file
-  puts "Checking file: #{file}"
   test_result = file =~ /_build/
-  puts "Result of check: '#{test_result}"
   return test_result == nil
 end
 
