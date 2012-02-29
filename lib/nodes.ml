@@ -173,7 +173,7 @@ let get_node_ip name =
   ip
 
 let check_if_the_ips_are_publicly_accessible name ips =
-  let token = "hi-from-server" in
+  let token = "hi_from_server" in
   let listen_port = 30000 + (Random.int 20000) in
   let list_of_ips_from_string ip_str =
     let open Re_str in
