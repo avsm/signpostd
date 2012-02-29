@@ -17,6 +17,7 @@
 
 open Lwt
 open Lwt_unix
+open Lwt_list
 
 module Manager = struct
 
@@ -52,28 +53,29 @@ exception OpenVpnError of string
                 (String.sub buf 0 len) )
         done)
 
-  let run_client ips port = 
+  let run_client port ips = 
     let buf = String.create 1500 in
     let sock = Lwt_unix.socket Lwt_unix.PF_INET Lwt_unix.SOCK_DGRAM
               (Unix.getprotobyname "udp").Unix.p_proto in   
-    try
+    let _ = try
       (* Make this a bit more random*)
         (Lwt_unix.bind sock (Lwt_unix.ADDR_INET (Unix.inet_addr_any,
-        10000)));
+        10000)))
     with exn -> 
-      raise (OpenVpnError("Couldn't be a udp server"));
+      raise (OpenVpnError("Couldn't be a udp server"))
+    in
 
     let send_pkt_to port ip = 
       let ipaddr = (Unix.gethostbyname ip).Unix.h_addr_list.(0) in
       let portaddr = Unix.ADDR_INET (ipaddr, port) in
       let msg = ip in
-      Unix.sendto sock msg 0 (String.length msg) [] portaddr >>
-      return ()
+      Lwt_unix.sendto sock msg 0 (String.length msg) [] portaddr;
+      ()
     in
 
-    lwt _ = List_lwt.iter_p (send_pkt_to port) ips in
-      lwt len = Unix.sendto socket msg 0 (String.length msg) [] portaddr in
-      return ((String.sub msg 0 len))
+     let _ = List.iter (send_pkt_to port) ips in 
+      lwt (len, _) = Lwt_unix.recvfrom sock buf 0 1500 [] in
+      return ((String.sub buf 0 len))
 
   let test args =
    let typ = List.hd args in
@@ -95,10 +97,10 @@ exception OpenVpnError of string
           return ("OK")
           )
     | "client" -> (
-      let port = int_of_string (List.hd args) in 
-      lwt ip = send_pkt_to port args in
-        (Print.printf "Received a reply from ip %s \n%!" ip)
-        >> return (ip)
+      let port = (int_of_string (List.hd args)) in 
+      lwt ip = run_client port args in
+        (Printf.printf "Received a reply from ip %s \n%!" ip);
+        return (ip)
     )
 
   let connect args =
