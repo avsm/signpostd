@@ -23,8 +23,7 @@ begin # emulate blocking recvfrom
       received_on << dst_ip
     end
   end
-rescue IO::WaitReadable
-  # IO.select([socket])
+rescue Exception => e #IO::WaitReadable
   if retry_count > 0 then
     retry_count -= 1
     sleep(0.1)
