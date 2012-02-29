@@ -52,15 +52,17 @@ exception Tactic_error of string
 let handle_tactic_request tactic act args =
     try 
     match tactic with
-    | "openvpn" ->(
-        match act with 
+    | "openvpn" ->
+        (match act with 
             | Rpc.TEST -> 
-                    Printf.printf "Openvpn run action found\n%!";
                     lwt v = (Openvpn.Manager.test args) in
                         return(Sp.ResponseValue v)
-            | _ -> raise (Tactic_error((Printf.sprintf "not implemented %s %s"
-            tactic (Rpc.string_of_action act))))
-            )
+            | Rpc.CONNECT -> 
+                    lwt v = (Openvpn.Manager.connect args) in
+                        return(Sp.ResponseValue v)            
+            | _ -> raise (Tactic_error((Printf.sprintf 
+                    "not implemented %s %s" tactic 
+                    (Rpc.string_of_action act))))  )
     | _ -> raise (Tactic_error((Printf.sprintf "not implemented %s %s" tactic
         (Rpc.string_of_action act))))
     with exn ->

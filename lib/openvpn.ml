@@ -50,8 +50,10 @@ exception OpenVpnError of string
       Printf.printf "error: %s\n%!" (Unix.error_message e);
       raise (OpenVpnError("Couldn't be a udp server"))
     in
+    (* save socket fd so that we can terminate it *)
     conn_db.fd <- Some(sock);
 
+    (* start background echo udp server to test connectivity*)
     conn_db.can <- Some(while_lwt true do
         lwt (len, ip) = Lwt_unix.recvfrom sock buf 0 1500 [] in
         lwt _ = Lwt_unix.sendto sock (String.sub buf 0 len) 0 len [] ip in
@@ -68,13 +70,9 @@ exception OpenVpnError of string
         (Lwt_unix.bind sock (Lwt_unix.ADDR_INET (Unix.inet_addr_any,
         10000)))
   with 
-      | Unix.Unix_error (e, _, _) ->
-        Printf.eprintf "error: %s\n%!" (Unix.error_message e);
-      raise (OpenVpnError("Couldn't be a udp server"))
       | exn -> Printf.eprintf "error: %s\n%!" (Printexc.to_string exn);
       raise (OpenVpnError("Couldn't be a udp server"))
     in
-
     let send_pkt_to port ip = 
       let ipaddr = (Unix.gethostbyname ip).Unix.h_addr_list.(0) in
       let portaddr = Unix.ADDR_INET (ipaddr, port) in
@@ -82,7 +80,6 @@ exception OpenVpnError of string
       Lwt_unix.sendto sock msg 0 (String.length msg) [] portaddr;
       ()
     in
-
      let _ = List.iter (send_pkt_to port) ips in 
       lwt (len, _) = Lwt_unix.recvfrom sock buf 0 1500 [] in
       lwt _ = Lwt_unix.close sock in
@@ -91,34 +88,34 @@ exception OpenVpnError of string
   let test args =
    let typ::args = args in
     match typ with
+    (* start udp server *)
     | "server_start" -> (
-      (* start udp server *)
       Printf.printf "starting server...\n%!";
       let port = (int_of_string (List.hd args)) in 
       Printf.printf "starting server on port %d...\n%!" port;
       let _ = run_server port in
-        return ("OK")
-    )
+        return ("OK"))
+
+    (* code to stop the udp echo server*)
     | "server_stop" -> (
-      Printf.printf "stoping server ... %d\n%!" (List.length args);
+      Printf.printf "stoping server...\n%!";
       match conn_db.can with
       | Some t ->
         cancel t;
         conn_db.can <- None;
         (match conn_db.fd with
-        | Some(fd) -> 
-            (Lwt_unix.close fd; conn_db.fd <- None)
+        | Some(fd) -> (Lwt_unix.close fd; conn_db.fd <- None)
         | _ -> ());
         return ("OK")
-      | _ -> return ("OK")
-          )
+      | _ -> return ("OK"))
+
+    (* code to send udp packets to the destination*)
     | "client" -> (
       let port :: ips = args in 
         Printf.printf "starting client.. %s\n" port;
       lwt ip = run_client (int_of_string port) ips in
         (Printf.printf "Received a reply from ip %s \n%!" ip);
-        return (ip)
-    )
+        return (ip))
     | _ ->  Printf.printf "Action %s not supported in test" typ;
     return ("OK")
 

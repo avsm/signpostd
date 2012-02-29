@@ -23,19 +23,29 @@ open Signal
 let openvpn_port = 1194
 
 let name () = "OpenVPN connection"
+exception Openvpn_error
 
 (* ******************************************
  * Try to establish if a direct connection between two hosts is possible
  * ******************************************)
 
+(*
+ * TODO:
+   * What garbage collection do I need to do in case something went wrong? 
+   * How do I enforce the Node module to provide the new ip to the end node? 
+   *
+ * *)
+
 let pairwise_connection_test a b =
+  try 
   let (dst_ip, dst_port) = Nodes.signalling_channel a in
   let rpc = (Rpc.create_tactic_request "openvpn" 
   Rpc.TEST ["server_start"; (string_of_int openvpn_port)]) in
   lwt res = (Signal.Server.send_with_response rpc
     (Lwt_unix.ADDR_INET((Unix.inet_addr_of_string dst_ip), 
         (Int64.to_int dst_port)))) in
-  
+  Printf.printf "UDP server started at %s\n%!" a;
+
   let (dst_ip, dst_port) = Nodes.signalling_channel b in
   let ips = Nodes.get_local_ips a in 
   let rpc = (Rpc.create_tactic_request "openvpn" 
@@ -50,30 +60,57 @@ let pairwise_connection_test a b =
   lwt res = (Signal.Server.send_with_response rpc
       (Lwt_unix.ADDR_INET((Unix.inet_addr_of_string dst_ip), 
           (Int64.to_int dst_port)))) in 
-   return ()
+   return (true, res)
+  with exn ->
+    Printf.eprintf "Pairwise test %s->%s failed\n%!" a b;
+    return (false, "")
 (*    (true, "127.0.0.2") *)
 
-let pairwise_connection_establish a b =
-  return ()
+let start_vpn_server node port =
+  let (dst_ip, dst_port) = Nodes.signalling_channel node in 
+  let rpc = (Rpc.create_tactic_request "openvpn" 
+  Rpc.CONNECT ["server"; (string_of_int openvpn_port)]) in
+  try
+    lwt res = (Signal.Server.send_with_response rpc
+        (Lwt_unix.ADDR_INET((Unix.inet_addr_of_string dst_ip), 
+            (Int64.to_int dst_port)))) in 
+        return (res)
+  with exn -> 
+    Printf.printf "Failed to start openvpn server on node %s\n%!" node;
+    raise Openvpn_error
 
-let addr_of (ip, port) =
-  (Signal.Server.addr_from ip port)
+
+let start_vpn_client dst_ip dst_port node = 
+  return ("")
+
+let init_openvpn a b = 
+  (* Init server on b *)
+    lwt b_ip = start_vpn_server b openvpn_port in
+  (*Init client on b and get ip *)
+    lwt _ = start_vpn_client (Nodes.get_local_ips b) openvpn_port a in
+  return (b_ip, "")
+
+let start_local_server () =
+  (* Maybe load a copy of the Openvpn module and let it 
+   * do the magic? *)
+  return ()
 
 let connect a b =
   eprintf "Requesting the nodes ip addresses\n";
-  let _ = pairwise_connection_test a b in 
-    return ()
-  (*
-  (* Setup a server on b on openvpn port and ask a to connect to it *)
-  let (result, ip) = pairwise_connection_test a b in 
-  if result then
-    (* setup connectivity *)
-    pairwise_connection_establish a b
-  else (
-    let (result, ip) = pairwise_connection_test b a in
-    if (result) then
-      pairwise_connection_establish b a
+  (* Trying to see if connectivity is possible *)
+    lwt (succ, ip) = pairwise_connection_test a b in
+    if succ then
+      lwt (a_ip, b_ip) = init_openvpn a b in 
+        return ()
     else
-      (* Need to check connectivity through an intermediate step *)
-      return ()
-  )*)
+      (* try the reverse direction *)
+      lwt (succ, ip) = pairwise_connection_test b a  in
+      if succ then
+        lwt (b_ip, a_ip) = init_openvpn b a in
+            return ()
+      else
+        lwt _ = start_local_server () in
+        let ip = Config.external_ip in
+        lwt [a_ip; b_ip] = (Lwt_list.map_p 
+            (start_vpn_client ip openvpn_port) [a; b]) in
+            return ()
