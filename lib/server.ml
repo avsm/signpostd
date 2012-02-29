@@ -35,17 +35,23 @@ let nxdomain =
 (* Ip address response for a node *)
 let ip_resp ~dst ~src ~domain =
   let open Dns.Packet in
-  let node_ip = Connections.find src dst in
-  let node = {
-    rr_name=dst::src::domain;
-    rr_class=`IN;
-    rr_ttl=0l;
-    rr_rdata=`A node_ip;
-  } in
-  let answer = [ node ] in
+  let addressables = Connections.find src dst in
+  let ip_addressables = List.filter (function
+    | (Sp.IPAddressInstance(ip)) -> true
+    | _ -> false) addressables in
+  let ip_addresses = List.map (fun (Sp.IPAddressInstance(ip)) ->
+        (Nodes.convert_ip_string_to_int ip)) ip_addressables in
+  let answers = List.map (fun ip ->
+    {
+      rr_name=dst::src::domain;
+      rr_class=`IN;
+      rr_ttl=0l;
+      rr_rdata=`A ip;
+    } 
+  ) ip_addresses in
   let authority = [] in
   let additional = [] in
-  { Dns.Query.rcode=`NoError; aa=true; answer; authority; additional }
+  { Dns.Query.rcode=`NoError; aa=true; answer=answers; authority; additional }
 
 (* Figure out the response from a query packet and its question section *)
 let get_response packet q =

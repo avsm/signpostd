@@ -103,6 +103,7 @@ let send name rpc =
 let send_to_server rpc =
   let ip = Config.iodine_node_ip in
   let port = of_int Config.signal_port in
+  eprintf "Sending to %s:%Li\n%!" ip port;
   let server = addr_from ip port in
   send_to_addr server rpc
 
@@ -151,7 +152,7 @@ let discover_local_ips () =
   ips 
 
 (* in int32 format for dns. default to 0.0.0.0 *)
-let get_node_ip name =
+let convert_ip_string_to_int ip_string =
   let ipv4_addr_of_tuple (a,b,c,d) =
     let (+) = Int32.add in
     (Int32.shift_left a 24) +
@@ -166,13 +167,15 @@ let get_node_ip name =
     with _ -> ());
     !ip
   in
-  let ip =
-    try ipv4_addr_of_string (get_ip name)
-    with Not_found -> 0l
-  in
-  ip
+  ipv4_addr_of_string ip_string
 
-let check_if_the_ips_are_publicly_accessible name ips =
+let get_node_ip name =
+  try 
+    let ip_string = (get_ip name) in
+    convert_ip_string_to_int ip_string
+  with Not_found -> 0l
+
+let check_for_publicly_accessible_ips name ips =
   let token = "hi_from_server" in
   let listen_port = 30000 + (Random.int 20000) in
   let list_of_ips_from_string ip_str =
@@ -185,12 +188,16 @@ let check_if_the_ips_are_publicly_accessible name ips =
   let listen_for_datagrams () =
     let args = (string_of_int listen_port) :: token :: [] in
     let rpc = Rpc.create_request "listen_for_datagrams" args in
+    eprintf "About to send RPC and wait for IP results...\n";
     send_blocking name rpc >>= fun results ->
+    eprintf "Got a list of ips back from the server....\n";
     let public_ips = list_of_ips_from_string results in
     let node = get name in
     update name {node with public_ips = public_ips};
-    List.iter (fun ip -> eprintf "Received for %s\n%!" ip) (list_of_ips_from_string results);
-    return ()
+    let ip_list = list_of_ips_from_string results in
+    List.iter (fun ip -> eprintf "Received for %s\n%!" ip) ip_list;
+    eprintf "About to return...\n";
+    return ip_list
   in
   let send_datagrams () =
     (* Wait for a while to allow the RPC to reach the client first. *)
@@ -198,11 +205,15 @@ let check_if_the_ips_are_publicly_accessible name ips =
     Lwt_list.iter_p (fun ip ->
       let target = addr_from ip (of_int listen_port) in
       let msg = sprintf "%s-%s" token ip in
+      lwt _ = send_datagram msg target in
       eprintf "Sent datagram %s\n%!" msg;
-      send_datagram msg target >>
       return ()
-    ) ips
+    ) ips >>
+    return []
   in
-  Lwt_list.iter_p (fun f -> f ()) [listen_for_datagrams;send_datagrams]
+  let fn_list = [listen_for_datagrams; send_datagrams] in
+  lwt ip_list :: _ = Lwt_list.map_p (fun f -> f ()) fn_list in
+  return ip_list
+
 
 (* ---------------------------------------------------------------------- *)

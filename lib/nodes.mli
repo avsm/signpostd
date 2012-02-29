@@ -26,6 +26,7 @@ val wake_up_thread_with_reply : Rpc.id -> Rpc.rpc -> unit Lwt.t
 val set_signalling_channel : Sp.name -> Sp.ip -> Sp.port -> unit
 val set_local_ips : Sp.name -> Sp.ip list -> unit
 val discover_local_ips : unit -> Sp.ip list
-val get_node_ip : Sp.name -> int32
-val check_if_the_ips_are_publicly_accessible : Sp.name -> Sp.ip list -> unit Lwt.t
+val check_for_publicly_accessible_ips : Sp.name -> Sp.ip list -> Sp.ip list Lwt.t
 val get_local_ips : Sp.name -> Sp.ip list
+val get_node_ip : Sp.name -> int32
+val convert_ip_string_to_int : Sp.ip -> int32

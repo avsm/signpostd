@@ -85,6 +85,7 @@ module Make (Handler : HandlerSig) = struct
       let subbuf = String.sub buf 0 len in
       eprintf "udp recvfrom %s : %s\n%!" (sockaddr_to_string dst) subbuf;
       let rpc = Rpc.rpc_of_string subbuf in
-      dispatch_rpc rpc
+      dispatch_rpc rpc;
+      return ()
     done
 end

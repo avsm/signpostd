@@ -27,7 +27,10 @@ let handle_rpc =
       eprintf "rpc: hello %s -> %s:%Li\n%!" node ip port;
       Nodes.set_signalling_channel node ip port;
       Nodes.set_local_ips node local_ips;
-      Nodes.check_if_the_ips_are_publicly_accessible node local_ips;
+      eprintf "About to check for publicly accesible ips\n%!";
+      Nodes.check_for_publicly_accessible_ips node local_ips >>= fun public_ips ->
+        eprintf "Got public ips... store them\n%!";
+        Connections.set_public_ips node public_ips;
       return ()
   end
   | _ -> 
