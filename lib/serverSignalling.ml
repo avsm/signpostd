@@ -19,26 +19,28 @@ open Printf
 open Int64
 
 let handle_rpc =
-let open Rpc in function
+  let open Rpc in function
   | None ->
       eprintf "warning: bad rpc\n%!";
       return ()
-  | Some data -> begin
-      match data with
-      | Hello (node,ip, port) ->
-          eprintf "rpc: hello %s -> %s:%Li\n%!" node ip port;
-          Nodes.update_sig_channel node ip port;
-          return ()
-      | Response(Result r, _, id) -> begin
-          eprintf "Response OK [%Li]: %s\n%!" id r;
-          return ()
-      end
-      | Response(_, Error e, id) -> begin
-          eprintf "Response ERROR [%Li]: %s\n%!" id e;
-          return ()
-      end
-      | _ -> begin
-          eprintf "ERROR: Received an RPC that clients don't handle\n%!";
-          return ()
-      end
+  | Some(Hello(node, ip, port, local_ips)) -> begin
+      eprintf "rpc: hello %s -> %s:%Li\n%!" node ip port;
+      Nodes.set_signalling_channel node ip port;
+      Nodes.set_local_ips node local_ips;
+      eprintf "About to check for publicly accesible ips\n%!";
+      Nodes.check_for_publicly_accessible_ips node local_ips >>= fun public_ips -> 
+      eprintf "Got public ips... store them\n%!";
+      Connections.set_public_ips node public_ips;
+      return ()
   end
+  | _ -> 
+      eprintf "ERROR: Received an RPC that the server can't handle\n%!";
+      return ()
+
+let handle_request command args =
+  eprintf "The server received a REQUEST RPC, but doesn't handle those.\n%!";
+  return Sp.NoResponse
+
+let handle_notification command args =
+  eprintf "The server received a NOTIFCATION RPC, but doesn't handle those.\n%!";
+  return ()

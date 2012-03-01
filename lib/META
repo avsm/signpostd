@@ -1,8 +1,8 @@
 # OASIS_START
-# DO NOT EDIT (digest: 1cf8bf24daa78fd651b853ea499830d1)
+# DO NOT EDIT (digest: 5ccd8e16c4515a17d2297e790356a1d3)
 version = "0.1-dev"
 description = "FRP tactics engine"
-requires = "lwt.syntax lwt re lwt.unix uri"
+requires = "lwt.syntax lwt re lwt.unix uri re.str"
 archive(byte) = "signpost.cma"
 archive(native) = "signpost.cmxa"
 exists_if = "signpost.cma"

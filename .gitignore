@@ -7,3 +7,5 @@ setup.bin
 *.native
 *.byte
 scripts/PASSWD
+**.bak
+**.DS_Store
