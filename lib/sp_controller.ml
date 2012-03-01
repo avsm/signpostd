@@ -14,18 +14,16 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
+
 open Lwt
 open Lwt_unix
 open Printf
 
-let resolve t = Lwt.on_success t (fun _ -> ())
 
 module OP = Ofpacket
 module OC = Controller
 module OE = OC.Event
 
-let pp = Printf.printf
-let sp = Printf.sprintf
 
 (* TODO this the mapping is incorrect. the datapath must be moved to the key
  * of the hashtbl *)
@@ -41,11 +39,17 @@ type switch_state = {
   mutable of_ctrl: OC.state list; 
 }
 
+
+let resolve t = Lwt.on_success t (fun _ -> ())
+
+let pp = Printf.printf
+
+let sp = Printf.sprintf
+
 let switch_data = { mac_cache = Hashtbl.create 0;
                     dpid = []; 
                     of_ctrl = [];
                   } 
-
 
 let datapath_join_cb controller dpid evt =
   let dp = 
@@ -101,7 +105,6 @@ incr req_count;
           OC.send_of_data controller dpid bs
       )
 
-
 (*let memory_debug () = 
    while_lwt true do
      (OS.Time.sleep 1.0)  >> 
@@ -155,4 +158,3 @@ let listen ?(port = 6633) () =
     with
       | e ->
           return (Printf.eprintf "Unexpected exception : %s" (Printexc.to_string e))
-

@@ -14,13 +14,14 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
+
 (**
   * A tactic sets up a single, uni-directional point-to-point link.
   * Every tactic has an entry in the Node forwarding table, where its
   * state is maintained.
   *)
-
 open Lwt
+
 
 type src_port = int
 type dst_port = int
@@ -69,6 +70,7 @@ module Always_fail = struct
     Node.Null, th
 end
 
+
 let start_tactic ~src ~dst ~tactic =
   let service, th =
     match tactic with
@@ -78,4 +80,3 @@ let start_tactic ~src ~dst ~tactic =
   let mode = Node.Starting th in
   let depends = [] in (* eventually an FRP dependency for recalculation *)
   Node.make_entry ~service ~mode ~depends
-
