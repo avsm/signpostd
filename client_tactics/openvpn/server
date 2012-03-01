@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+
+port=$1
+dev_id=$2
+
+cat client_tactics/openvpn/server.conf.template | sed -e \
+  "s/\\\$port\\\$/$port/g" -e "s/\\\$dev_id\\\$/$dev_id/g"\
+  | tee server.conf
+
+openvpn --script-security 3 --config server.conf 
+
+cat signpost_vpn_server_$dev_id
+
+echo params: $@
