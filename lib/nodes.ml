@@ -60,7 +60,7 @@ let get_local_ips name =
   let node = get name in
   node.local_ips
 
-let get_local_ip () =
+let get_local_ip ?(dev="") () =
     let ip_stream = (Unix.open_process_in
     (Config.dir ^ "/client_tactics/get_local_ips")) in
     let buf = String.make 1500 ' ' in

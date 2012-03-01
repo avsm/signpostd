@@ -62,7 +62,8 @@ let pairwise_connection_test a b =
           (Int64.to_int dst_port)))) in 
    return (true, res)
   with exn ->
-    Printf.eprintf "Pairwise test %s->%s failed\n%!" a b;
+    Printf.eprintf "Pairwise test %s->%s failed:%s\n%s\n%!" a b
+    (Printexc.to_string exn) (Printexc.get_backtrace ());
     return (false, "")
 (*    (true, "127.0.0.2") *)
 
@@ -81,14 +82,24 @@ let start_vpn_server node port =
 
 
 let start_vpn_client dst_ip dst_port node = 
-  return ("")
+  let (dst_ip, dst_port) = Nodes.signalling_channel node in 
+  let rpc = (Rpc.create_tactic_request "openvpn" 
+  Rpc.CONNECT ["client"; "10.20.0.3"; (string_of_int openvpn_port)]) in
+  try
+    lwt res = (Signal.Server.send_with_response rpc
+        (Lwt_unix.ADDR_INET((Unix.inet_addr_of_string dst_ip), 
+            (Int64.to_int dst_port)))) in 
+        return (res)
+  with exn -> 
+    Printf.printf "Failed to start openvpn server on node %s\n%!" node;
+    raise Openvpn_error
 
 let init_openvpn a b = 
   (* Init server on b *)
     lwt b_ip = start_vpn_server b openvpn_port in
   (*Init client on b and get ip *)
-    lwt _ = start_vpn_client (Nodes.get_local_ips b) openvpn_port a in
-  return (b_ip, "")
+    lwt a_ip = start_vpn_client (Nodes.get_local_ips b) openvpn_port a in
+  return (a_ip, b_ip)
 
 let start_local_server () =
   (* Maybe load a copy of the Openvpn module and let it 

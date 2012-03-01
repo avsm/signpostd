@@ -3,7 +3,7 @@
 set -e
 
 function main {
-  ifconfig -a | 
+  ifconfig -a $1 | 
   sed -e "s/addr://g" |
   get_ipv4_addresses |
   exclude_local_addresses |
@@ -30,4 +30,4 @@ function get_ipv4_addresses {
   awk '{print $2}' 
 }
 
-main;
+main $1;

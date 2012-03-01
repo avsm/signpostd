@@ -24,7 +24,7 @@ module Manager = struct
 exception OpenVpnError of string
 
   type conn_type = {
-    ip: string;
+    ip: string option;
     port: int;
     pid: int;
   }
@@ -122,7 +122,52 @@ exception OpenVpnError of string
   let connect args =
     let conn_id = conn_db.max_id + 1 in 
     conn_db.max_id <- conn_id;
-    (true, conn_id, "success")
+    let typ :: args = args in
+    match typ with
+        | "server" ->
+            let port = List.hd args in
+            Printf.printf "port: %s\n%!" port; 
+            let cmd = Unix.getcwd () ^ "/client_tactics/openvpn/server" in
+            let _ = Unix.create_process cmd 
+                [| ""; port; (string_of_int conn_id) |] 
+                Unix.stdin Unix.stdout Unix.stderr in
+(*             lwt _ = Lwt_unix.sleep 1.0 in *)
+            Printf.printf "Server started ...\n%!";
+            let buf = String.create 100 in
+            let fd = Unix.openfile ("./signpost_vpn_server_" ^ (string_of_int
+            conn_id)) [Unix.O_RDONLY]  0o640 in
+            let len = Unix.read fd buf 0 100 in 
+            Printf.printf "process created with pid %s...\n" (String.sub buf 0
+            len);
+            let pid = int_of_string (String.sub buf 0 (len-1)) in 
+            Printf.printf "process created with pid %d...\n" pid;
+            Hashtbl.add conn_db.conns pid {ip=None;port=(int_of_string port);pid;};
+            lwt _ = Lwt_unix.sleep 1.0 in
+            let ip = Nodes.get_local_ip ~dev:("tun"^(string_of_int conn_id)) () in 
+            return ((List.hd ip))
+
+        | "client" -> 
+            let ip :: port :: args = args in
+            let cmd = Unix.getcwd () ^ "/client_tactics/openvpn/client" in
+            let _ = Unix.create_process cmd 
+                [| ""; ip; port; (string_of_int conn_id) |] 
+                Unix.stdin Unix.stdout Unix.stderr in
+(*             lwt _ = Lwt_unix.sleep 1.0 in *)
+            Printf.printf "Server started ...\n%!";
+            let buf = String.create 100 in
+            let fd = Unix.openfile ("./signpost_vpn_client_" ^ (string_of_int
+            conn_id)) [Unix.O_RDONLY]  0o640 in
+            let len = Unix.read fd buf 0 100 in 
+            let pid = int_of_string (String.sub buf 0 (len-1)) in 
+            Printf.printf "process created with pid %d...\n%!" pid;
+            Hashtbl.add conn_db.conns pid {ip=Some(ip);port=(int_of_string port);pid;};
+            lwt _ = Lwt_unix.sleep 3.0 in
+              Printf.printf "device %s created\n%!" ("tun"^(string_of_int conn_id));
+            let ip = Nodes.get_local_ip ~dev:("tun"^(string_of_int conn_id)) () in
+              Printf.printf "return ip addr %d\n%!" (List.length ip);
+            return ((List.hd ip))        
+      | _ -> raise(OpenVpnError(
+            (Printf.sprintf "openvpn invalid invalid action %s" typ)))
 
   let teardown args =
     (* kill openvpn pid*)

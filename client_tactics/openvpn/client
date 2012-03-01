@@ -1,0 +1,14 @@
+#!/usr/bin/env bash 
+
+port=$2
+ip=$1
+dev_id=$3
+
+cat client_tactics/openvpn/client.conf.template |\
+    sed -e "s/\\\$port\\\$/$port/g"\
+    -e "s/\\\$dev_id\\\$/$dev_id/g" -e "s/\\\$ip\\\$/$ip/g" |\
+    tee client.conf
+
+openvpn --config client.conf
+
+cat signpost_vpn_client_$dev_id 
