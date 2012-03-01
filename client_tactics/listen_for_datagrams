@@ -1,0 +1,50 @@
+#!/usr/bin/env ruby
+
+# Copyright (c) 2012 Sebastian Probst Eide <sebastian.probst.eide@gmail.com>
+#
+# Permission to use, copy, modify, and distribute this software for any
+# purpose with or without fee is hereby granted, provided that the above
+# copyright notice and this permission notice appear in all copies.
+#
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+# WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+# MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+# ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+# WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+# OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+
+require 'socket'
+
+# Waits for at least 5 seconds, waiting for datagrams
+# to arrive from the server.
+
+listen_port = ARGV[0]
+token = ARGV[1]
+
+socket = UDPSocket.new
+socket.bind("0.0.0.0", listen_port)
+
+retry_count = 50
+
+received_on = []
+
+begin # emulate blocking recvfrom
+  while retry_count > 0 do
+    data, addr = socket.recvfrom_nonblock(255)  
+    #=> ["token-IP", ["AF_INET", 33302, "localhost.localdomain", "127.0.0.1"]]
+    received_token, dst_ip = data.split("-")
+    if received_token == token then
+      received_on << dst_ip
+    end
+  end
+rescue Exception => e #IO::WaitReadable
+  if retry_count > 0 then
+    retry_count -= 1
+    sleep(0.1)
+    retry
+  end
+end
+
+puts "#{received_on.uniq.join(" ")}"

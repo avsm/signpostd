@@ -14,6 +14,10 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
+
+exception Client_error
+
+
 type name = string
 type ip = string
 type port = int64
@@ -27,11 +31,18 @@ type signalling_channel =
   | SignallingChannel of ip * port
   | NoSignallingChannel
 
+type request_response =
+  | ResponseValue of string
+  | ResponseError of string
+  | NoResponse
+
+
 module type TacticSig = sig
   val name : unit -> string
   (* val provides : unit -> channel_property list *)
   val connect : name -> name -> unit Lwt.t
 end
+
 
 let iprecord ip = IPAddressInstance(ip)
 let srvrecord ip port = SRVInstance(SRV(ip, port))

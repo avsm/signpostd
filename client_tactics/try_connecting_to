@@ -1,0 +1,60 @@
+#!/usr/bin/env ruby
+
+# Copyright (c) 2012 Sebastian Probst Eide <sebastian.probst.eide@gmail.com>
+#
+# Permission to use, copy, modify, and distribute this software for any
+# purpose with or without fee is hereby granted, provided that the above
+# copyright notice and this permission notice appear in all copies.
+#
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+# WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+# MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+# ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+# WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+# OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+
+require 'socket'
+
+listen_port = ARGV[0]
+send_port = ARGV[1]
+token = ARGV[2]
+
+ips = []
+3.upto(ARGV.size - 1) do |n|
+  ips << ARGV[n]
+end
+
+socket = UDPSocket.new
+socket.bind("0.0.0.0", listen_port)
+
+3.times do
+  ips.each do |ip|
+    socket.send token, 0, ip, send_port
+  end
+  sleep(0.1)
+end
+
+retry_count = 10
+
+received_from = []
+
+sleep(0.1)
+begin # emulate blocking recvfrom
+  while retry_count > 0 do
+    data, addr = socket.recvfrom_nonblock(10)  #=> ["aaa", ["AF_INET", 33302, "localhost.localdomain", "127.0.0.1"]]
+    if data == token then
+      ip = addr[3]
+      received_from << ip
+    end
+  end
+rescue IO::WaitReadable
+  # IO.select([socket])
+  if retry_count > 0 then
+    retry_count -= 1
+    retry
+  end
+end
+
+puts received_from.uniq.join(" ")

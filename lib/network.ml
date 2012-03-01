@@ -14,7 +14,9 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
+
 open Graph
+
 
 (**
   * The graph structure is an imperative unidirectional labelled graph,
@@ -22,12 +24,6 @@ open Graph
   * a single tactic. Multiple tactics are represented by multiple edges.
   *)
 module G = Imperative.Digraph.ConcreteLabeled(Node.Ordered)(Node.FlowEntry)
-
-(* Retrieve a network node by its name.
- * TODO: folding over the graph can be optimised
- *)
-let find_node ~name g =
-  G.fold_vertex (fun b a -> if b.Node.name = name then Some b else a) g None
 
 (**
   * Extend the graph functor with enough to output a DOT graph of the
@@ -45,3 +41,9 @@ module Display = struct
 end
 module DotOutput = Graphviz.Dot(Display)
 
+
+(* Retrieve a network node by its name.
+ * TODO: folding over the graph can be optimised
+ *)
+let find_node ~name g =
+  G.fold_vertex (fun b a -> if b.Node.name = name then Some b else a) g None
