@@ -15,6 +15,6 @@ cd ${d}
 PASS=`cat PASSWD`
 if [ "`ps -e | grep iodined | wc -l `" -eq 0 ]; then
   echo "Setting up iodined"
-  iodined -F /tmp/iodine.pid -P "${PASS}" -c -b 5354 "$IP_RANGE"1/24 i.d$NUM.$DOMAIN;
+  iodined -F /tmp/iodine.pid -P "${PASS}" -c -b 5354 "${IP_RANGE}1/24" i.d$NUM.$DOMAIN;
 fi
 ../_build/lib/server.native

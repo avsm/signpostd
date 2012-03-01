@@ -59,11 +59,14 @@ let store_addresses a b addr_list =
   | false -> set (name_to_db_name (b,a)) (ip_list_to_address_list (flip_addresses addr_list))
 
 let set_public_ips a ips =
+  eprintf "Storing ips for %s\n" a;
+  List.iter (fun s -> eprintf "storing ip: %s\n%!" s) ips;
   let key = (Wildcard, Name(a)) in
   let addrs = List.map (fun ip -> (NoAddress, Address(Sp.IPAddressInstance(ip)))) ips in
   set key addrs
 
 let lookup a_name b_name =
+  eprintf "Looking up connections from %s to %s\n%!" a_name b_name;
   let a = Name a_name in
   let b = Name b_name in
   let tunnels = match in_order a b with
