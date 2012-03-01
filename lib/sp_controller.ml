@@ -20,6 +20,11 @@ open Lwt_unix
 open Printf
 
 
+module OP = Ofpacket
+module OC = Controller
+module OE = OC.Event
+
+
 (* TODO this the mapping is incorrect. the datapath must be moved to the key
  * of the hashtbl *)
 type mac_switch = {
@@ -33,10 +38,6 @@ type switch_state = {
   mutable dpid: OP.datapath_id list;
   mutable of_ctrl: OC.state list; 
 }
-
-module OP = Ofpacket
-module OC = Controller
-module OE = OC.Event
 
 
 let resolve t = Lwt.on_success t (fun _ -> ())
