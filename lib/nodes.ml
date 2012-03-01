@@ -14,9 +14,11 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
+
 open Lwt
 open Printf
 open Int64
+
 
 (* ---------------------------------------------------------------------- *)
 
@@ -33,6 +35,7 @@ type node = {
 type nodes_state = {
   nodes: (string, node) Hashtbl.t;
 }
+
 
 (* node name -> Sp.node *)
 let node_db = {nodes=(Hashtbl.create 0);}
@@ -214,6 +217,5 @@ let check_for_publicly_accessible_ips name ips =
   let fn_list = [listen_for_datagrams; send_datagrams] in
   lwt ip_list :: _ = Lwt_list.map_p (fun f -> f ()) fn_list in
   return ip_list
-
 
 (* ---------------------------------------------------------------------- *)

@@ -14,9 +14,14 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
+
 open Lwt
 open Printf
 open Int64
+
+
+module IncomingSignalling = SignalHandler.Make (ClientSignalling)
+
 
 let node_name = ref "unknown"
 let node_ip = ref "unknown"
@@ -44,8 +49,6 @@ let client_t () =
     done
   in
   xmit_t
-
-module IncomingSignalling = SignalHandler.Make (ClientSignalling)
 
 let signal_t ~port =
   IncomingSignalling.thread ~address:"0.0.0.0" ~port

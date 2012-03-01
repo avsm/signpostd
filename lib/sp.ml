@@ -14,6 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
+
 exception Client_error
 
 
@@ -34,6 +35,7 @@ type request_response =
   | ResponseValue of string
   | ResponseError of string
   | NoResponse
+
 
 module type TacticSig = sig
   val name : unit -> string
