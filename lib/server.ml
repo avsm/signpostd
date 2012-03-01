@@ -18,7 +18,7 @@
 open Lwt 
 open Printf
 open Int64
-open Sp_controller
+(* open Sp_controller *)
 
 
 (* The domain we are authoritative for *)
