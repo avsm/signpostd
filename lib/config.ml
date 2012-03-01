@@ -20,6 +20,7 @@ let domain = "signpo.st"
 let ip_slash_24 = "172.16.11."
 let external_ip = "50.19.186.111"
 let external_dns = "ec2-50-19-186-111.compute-1.amazonaws.com"
+let dir = "/home/cr409/scratch/code/signpostd/"
 
 let iodine_node_ip = "172.16.9.1"
 (* for testing
