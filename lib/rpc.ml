@@ -14,7 +14,9 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
+
 open Int64
+
 
 type node_name = string
 type ip = string
@@ -74,6 +76,7 @@ type rpc =
   | Tactic_request of string * action * arg list * id
   | Tactic_response of string * result * error * id
 
+
 let rpc_id_counter = ref 0
 
 let rec string_list_of_json_list = function
@@ -91,7 +94,6 @@ let rpc_to_json rpc =
   Object [
     match rpc with
     | Hello (n, i, p, ips) ->
-
         "hello", (Array [ String n; String i; Int p; 
         Array (json_list_of_string_list ips)])
     (* Based on the specifications of JSON-RPC:

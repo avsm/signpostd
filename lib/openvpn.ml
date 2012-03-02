@@ -143,7 +143,7 @@ exception OpenVpnError of string
             Printf.printf "process created with pid %d...\n" pid;
             Hashtbl.add conn_db.conns pid {ip=None;port=(int_of_string port);pid;};
             lwt _ = Lwt_unix.sleep 1.0 in
-            let ip = Nodes.get_local_ip ~dev:("tun"^(string_of_int conn_id)) () in 
+            let ip = Nodes.discover_local_ips ~dev:("tun"^(string_of_int conn_id)) () in 
             return ((List.hd ip))
 
         | "client" -> 
@@ -163,7 +163,7 @@ exception OpenVpnError of string
             Hashtbl.add conn_db.conns pid {ip=Some(ip);port=(int_of_string port);pid;};
             lwt _ = Lwt_unix.sleep 3.0 in
               Printf.printf "device %s created\n%!" ("tun"^(string_of_int conn_id));
-            let ip = Nodes.get_local_ip ~dev:("tun"^(string_of_int conn_id)) () in
+            let ip = Nodes.discover_local_ips ~dev:("tun"^(string_of_int conn_id)) () in
               Printf.printf "return ip addr %d\n%!" (List.length ip);
             return ((List.hd ip))        
       | _ -> raise(OpenVpnError(

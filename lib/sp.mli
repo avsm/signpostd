@@ -1,5 +1,5 @@
 (*
- * Copyright (c) 2012 Anil Madhavapeddy <anil@recoil.org>
+ * Copyright (c) 2012 Sebastian Probst Eide <sebastian.probst.eide@gmail.com>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -15,12 +15,34 @@
  *)
 
 
-open Lwt
-open Printf
+exception Client_error
 
 
-let tunnel_request ~src ~dst ~user ~password =
-  match (user = Config.user),(password = Config.password) with
-  |false ->
-    eprintf "Unknown user/password, ignoring tunnel: %s,%s\n%!" user password
-  |true ->
+type name = string
+type ip = string
+type port = int64
+type srv = SRV of ip * port
+
+type addressable =
+  | IPAddressInstance of ip
+  | SRVInstance of srv
+
+type signalling_channel =
+  | SignallingChannel of ip * port
+  | NoSignallingChannel
+
+type request_response =
+  | ResponseValue of string
+  | ResponseError of string
+  | NoResponse
+
+
+module type TacticSig = sig
+  val name : unit -> string
+  (* val provides : unit -> channel_property list *)
+  val connect : name -> name -> unit Lwt.t
+end
+
+
+val iprecord : ip -> addressable
+val srvrecord : ip -> port -> addressable

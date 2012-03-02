@@ -18,7 +18,6 @@ open Lwt
 open Lwt_unix
 open Printf
 open Int64
-open Signal
 
 let openvpn_port = 1194
 
@@ -38,28 +37,20 @@ exception Openvpn_error
 
 let pairwise_connection_test a b =
   try 
-  let (dst_ip, dst_port) = Nodes.signalling_channel a in
+(*   let (dst_ip, dst_port) = Nodes.signalling_channel a in *)
   let rpc = (Rpc.create_tactic_request "openvpn" 
   Rpc.TEST ["server_start"; (string_of_int openvpn_port)]) in
-  lwt res = (Signal.Server.send_with_response rpc
-    (Lwt_unix.ADDR_INET((Unix.inet_addr_of_string dst_ip), 
-        (Int64.to_int dst_port)))) in
+  lwt res = (Nodes.send_blocking a rpc) in
   Printf.printf "UDP server started at %s\n%!" a;
 
-  let (dst_ip, dst_port) = Nodes.signalling_channel b in
   let ips = Nodes.get_local_ips a in 
   let rpc = (Rpc.create_tactic_request "openvpn" 
   Rpc.TEST (["client"; (string_of_int openvpn_port)] @ ips)) in
-    lwt res = (Signal.Server.send_with_response rpc
-        (Lwt_unix.ADDR_INET((Unix.inet_addr_of_string dst_ip), 
-            (Int64.to_int dst_port)))) in 
+    lwt res = (Nodes.send_blocking b rpc) in 
   
-  let (dst_ip, dst_port) = Nodes.signalling_channel a in
   let rpc = (Rpc.create_tactic_request "openvpn" 
   Rpc.TEST ["server_stop"; (string_of_int openvpn_port)]) in
-  lwt res = (Signal.Server.send_with_response rpc
-      (Lwt_unix.ADDR_INET((Unix.inet_addr_of_string dst_ip), 
-          (Int64.to_int dst_port)))) in 
+  lwt res = (Nodes.send_blocking a rpc) in 
    return (true, res)
   with exn ->
     Printf.eprintf "Pairwise test %s->%s failed:%s\n%s\n%!" a b
@@ -68,13 +59,10 @@ let pairwise_connection_test a b =
 (*    (true, "127.0.0.2") *)
 
 let start_vpn_server node port =
-  let (dst_ip, dst_port) = Nodes.signalling_channel node in 
   let rpc = (Rpc.create_tactic_request "openvpn" 
   Rpc.CONNECT ["server"; (string_of_int openvpn_port)]) in
   try
-    lwt res = (Signal.Server.send_with_response rpc
-        (Lwt_unix.ADDR_INET((Unix.inet_addr_of_string dst_ip), 
-            (Int64.to_int dst_port)))) in 
+    lwt res = (Nodes.send_blocking node rpc) in 
         return (res)
   with exn -> 
     Printf.printf "Failed to start openvpn server on node %s\n%!" node;
@@ -82,13 +70,10 @@ let start_vpn_server node port =
 
 
 let start_vpn_client dst_ip dst_port node = 
-  let (dst_ip, dst_port) = Nodes.signalling_channel node in 
   let rpc = (Rpc.create_tactic_request "openvpn" 
   Rpc.CONNECT ["client"; "10.20.0.3"; (string_of_int openvpn_port)]) in
   try
-    lwt res = (Signal.Server.send_with_response rpc
-        (Lwt_unix.ADDR_INET((Unix.inet_addr_of_string dst_ip), 
-            (Int64.to_int dst_port)))) in 
+    lwt res = (Nodes.send_blocking node rpc) in 
         return (res)
   with exn -> 
     Printf.printf "Failed to start openvpn server on node %s\n%!" node;

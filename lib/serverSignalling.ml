@@ -14,22 +14,25 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
+
 open Lwt
 open Printf
 open Int64
 
-(* FIXME: This is ugly... The server doesn't have a one place *)
-(* packet destination, so we set this address to "dev/null" *)
-let sa = ("0.0.0.0", (of_int 0))
 
 let handle_rpc =
   let open Rpc in function
   | None ->
       eprintf "warning: bad rpc\n%!";
       return ()
-  | Some(Hello(node, ip, port, ips)) -> begin
+  | Some(Hello(node, ip, port, local_ips)) -> begin
       eprintf "rpc: hello %s -> %s:%Li\n%!" node ip port;
-      Nodes.update_sig_channel node ip port ips;
+      Nodes.set_signalling_channel node ip port;
+      Nodes.set_local_ips node local_ips;
+      eprintf "About to check for publicly accesible ips\n%!";
+      Nodes.check_for_publicly_accessible_ips node local_ips >>= fun public_ips -> 
+      eprintf "Got public ips... store them\n%!";
+      Connections.set_public_ips node public_ips;
       return ()
   end
   | _ -> 

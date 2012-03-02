@@ -15,22 +15,19 @@
  *)
 
 
-open Lwt
-open Printf
+(* API for sending rpc's to a node *)
+val send : Sp.name -> Rpc.rpc -> unit Lwt.t
+val send_to_server : Rpc.rpc -> unit Lwt.t
+val send_blocking : Sp.name -> Rpc.rpc -> string Lwt.t
 
+(* Let the SignalHandler wake up a pending sender *)
+val wake_up_thread_with_reply : Rpc.id -> Rpc.rpc -> unit Lwt.t
 
-let tactics = [
-(*   (module DirectConnection : Sp.TacticSig); *)
-  (module OpenvpnConnection : Sp.TacticSig)
-  ]
-
-let iter_over_tactics a b =
-  let open List in
-  Lwt_list.iter_p (fun t ->
-    let module Tactic = (val t : Sp.TacticSig) in
-    Tactic.connect a b
-  ) tactics
-
-let connect a b =
-  eprintf "Engine is trying to connect %s and %s\n" a b;
-  iter_over_tactics a b
+(* API for updatating the node store *)
+val set_signalling_channel : Sp.name -> Sp.ip -> Sp.port -> unit
+val set_local_ips : Sp.name -> Sp.ip list -> unit
+val discover_local_ips : ?dev:string -> unit -> Sp.ip list
+val check_for_publicly_accessible_ips : Sp.name -> Sp.ip list -> Sp.ip list Lwt.t
+val get_local_ips : Sp.name -> Sp.ip list
+val get_node_ip : Sp.name -> int32
+val convert_ip_string_to_int : Sp.ip -> int32

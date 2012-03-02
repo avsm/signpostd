@@ -1,5 +1,5 @@
 (*
- * Copyright (c) 2012 Anil Madhavapeddy <anil@recoil.org>
+ * Copyright (c) 2012 Sebastian Probst Eide <sebastian.probst.eide@gmail.com>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -15,12 +15,16 @@
  *)
 
 
-open Lwt
-open Printf
+module type HandlerSig = 
+  sig
+    val handle_request : Rpc.command -> Rpc.arg list -> Sp.request_response Lwt.t
+    val handle_notification : Rpc.command -> Rpc.arg list -> unit Lwt.t
+    val handle_rpc : Rpc.rpc option -> unit Lwt.t
+    val handle_tactic_request : string -> Rpc.action -> string list ->
+      Sp.request_response Lwt.t  end
 
+module type Functor = sig
+  val thread : address:Sp.ip -> port:Sp.port -> unit Lwt.t
+end
 
-let tunnel_request ~src ~dst ~user ~password =
-  match (user = Config.user),(password = Config.password) with
-  |false ->
-    eprintf "Unknown user/password, ignoring tunnel: %s,%s\n%!" user password
-  |true ->
+module Make (Handler : HandlerSig) : Functor 
