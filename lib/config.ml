@@ -24,6 +24,7 @@ let external_dns = "ec2-50-19-186-111.compute-1.amazonaws.com"
 let dir = "/home/cr409/scratch/code/signpostd/"
 
 let iodine_node_ip = "172.16.11.1"
+let ns_server="8.8.8.8"
 (* for testing *)
 (* let iodine_node_ip = "127.0.0.1" *)
 
