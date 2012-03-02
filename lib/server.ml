@@ -18,7 +18,7 @@
 open Lwt 
 open Printf
 open Int64
-(* open Sp_controller *)
+open Sp_controller
 
 
 (* The domain we are authoritative for *)
@@ -111,7 +111,6 @@ let signal_t () =
   IncomingSignalling.thread ~address:"0.0.0.0" ~port:(of_int Config.signal_port)
 
 let _ =
-  let daemon_t = join [ dns_t (); signal_t () ] in
-  (* let daemon_t = join [ dns_t (); signal_t (); *)
-  (*                       Sp_controller.listen () ] in *)
+  let daemon_t = join [ dns_t (); signal_t ();
+                        Sp_controller.listen () ] in
   Lwt_main.run daemon_t
