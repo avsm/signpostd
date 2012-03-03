@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
 set -ex
 
-NS="192.168.56.101"
+NS=`cat lib/config.ml | grep external_ip | awk '{print $4}' | sed 's/"//g'`
+IODINE_DOMAIN="i.d2.signpo.st"
 
 PASS=`cat scripts/PASSWD`
 if [ "`ps -e | grep iodine | wc -l `" -lt 2 ]; then
-    iodine -r -P ${PASS} $NS i.d2.signpo.st;
+  if NS==""; then
+    iodine -P ${PASS} "$IODINE_DOMAIN";
+  else
+    iodine -P ${PASS} $NS "$IODINE_DOMAIN"
+  fi
 fi
 
 if [ "`ifconfig | grep -E "^tun0" | wc -l`" -gt 0 ]; then

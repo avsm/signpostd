@@ -26,7 +26,7 @@ val wake_up_thread_with_reply : Rpc.id -> Rpc.rpc -> unit Lwt.t
 (* API for updatating the node store *)
 val set_signalling_channel : Sp.name -> Sp.ip -> Sp.port -> unit
 val set_local_ips : Sp.name -> Sp.ip list -> unit
-val discover_local_ips : unit -> Sp.ip list
+val discover_local_ips : ?dev:string -> unit -> Sp.ip list
 val check_for_publicly_accessible_ips : Sp.name -> Sp.ip list -> Sp.ip list Lwt.t
 val get_local_ips : Sp.name -> Sp.ip list
 val get_node_ip : Sp.name -> int32
