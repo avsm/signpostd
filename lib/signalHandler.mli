@@ -21,7 +21,8 @@ module type HandlerSig =
     val handle_notification : Rpc.command -> Rpc.arg list -> unit Lwt.t
     val handle_rpc : Rpc.rpc option -> unit Lwt.t
     val handle_tactic_request : string -> Rpc.action -> string list ->
-      Sp.request_response Lwt.t  end
+      Sp.request_response Lwt.t  
+  end
 
 module type Functor = sig
   val thread : address:Sp.ip -> port:Sp.port -> unit Lwt.t

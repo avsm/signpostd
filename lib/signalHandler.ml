@@ -33,7 +33,6 @@ end
 module Signalling (Handler : SignallingHandlerSig) = struct
   exception Client_error
   exception Signal_error of string
-
 *)
 module type Functor = sig
   val thread : address:Sp.ip -> port:Sp.port -> unit Lwt.t
