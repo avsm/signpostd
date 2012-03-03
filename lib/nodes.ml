@@ -18,9 +18,14 @@
 open Lwt
 open Printf
 open Int64
+open Unix
+open Re_str
 
 
 (* ---------------------------------------------------------------------- *)
+
+exception Client_error
+
 
 (* Nodes have a lot of associated information.
  * It is all part of the node store.
@@ -63,6 +68,7 @@ let get_ip name =
 let get_local_ips name =
   let node = get name in
   node.local_ips
+
 
 (* ---------------------------------------------------------------------- *)
 
@@ -113,11 +119,18 @@ let send_to_server rpc =
 let send_blocking name rpc =
   let open Rpc in
   let sleeper, wakener = Lwt.wait () in
-  let Request(_, _, id) = rpc in
+  
+  let id = match rpc with
+  | Request(_, _, id) -> id 
+  | Tactic_request (_, _, _, id) -> id 
+  | _ -> raise Client_error("Invalid rpc send ") 
+  in
   register_sender id wakener;
   send name rpc;
   sleeper >>= fun result ->
   match result with
+  | Tactic_response(_, Result r, _,_) -> return r
+  | Tactic_response(_, _, Error e, _) -> raise Client_error e
   | Response(Result r, _, _) -> return r
   | Response(_, Error e, _) -> raise Sp.Client_error e
 
@@ -140,9 +153,9 @@ let set_local_ips name local_ips =
   let node = get name in
   update name {node with local_ips = local_ips}
 
-let discover_local_ips () =
+let discover_local_ips ?(dev="") () =
   let ip_stream = (Unix.open_process_in
-  (Unix.getcwd () ^ "/client_tactics/get_local_ips")) in
+  (Unix.getcwd () ^ "/client_tactics/get_local_ips " ^ dev)) in
   let buf = String.make 1500 ' ' in
   let len = input ip_stream buf 0 1500 in
   let ips = Re_str.split (Re_str.regexp " ") (String.sub buf 0 (len-1)) in

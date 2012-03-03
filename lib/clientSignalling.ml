@@ -20,6 +20,9 @@ open Printf
 open Int64
 
 
+exception Tactic_error of string
+
+
 let execute_tactic cmd arg_list =
   let open Lwt_process in
   let command = Unix.getcwd () ^ "/client_tactics/" ^ cmd in
@@ -45,3 +48,24 @@ let handle_notification command arg_list =
   eprintf "NOTIFICATION: %s with args %s\n%!" command args;
   execute_tactic command arg_list >>= fun _ ->
   return ()
+
+let handle_tactic_request tactic act args =
+    try 
+    match tactic with
+    | "openvpn" ->
+        (match act with 
+            | Rpc.TEST -> 
+                    lwt v = (Openvpn.Manager.test args) in
+                        return(Sp.ResponseValue v)
+            | Rpc.CONNECT -> 
+                    lwt v = (Openvpn.Manager.connect args) in
+                        return(Sp.ResponseValue v)            
+            | _ -> raise (Tactic_error((sprintf 
+                    "not implemented %s %s" tactic 
+                    (Rpc.string_of_action act))))  )
+    | _ -> raise (Tactic_error((sprintf "not implemented %s %s" tactic
+        (Rpc.string_of_action act))))
+    with exn ->
+        printf "Exception captured in client handler %s\n%!"
+            (Printexc.to_string exn);
+        return(Sp.ResponseError("Exception captured in client handler"))

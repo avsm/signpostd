@@ -20,7 +20,8 @@ open Printf
 
 
 let tactics = [
-    (module DirectConnection : Sp.TacticSig)
+    (* (module DirectConnection : Sp.TacticSig); *)
+    (module OpenvpnConnection : Sp.TacticSig)
   ]
 
 let iter_over_tactics a b =
