@@ -15,7 +15,7 @@
  *)
 
 
-exception Client_error
+exception Client_error of string
 
 
 type name = string

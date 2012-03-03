@@ -37,3 +37,5 @@ let ns_server="8.8.8.8"
 
 let signal_port = 3456
 
+(* RPCs timeout after 5 minutes *)
+let rpc_timeout = 5 * 60

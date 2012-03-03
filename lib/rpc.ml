@@ -18,6 +18,9 @@
 open Int64
 
 
+exception Timeout
+
+
 type node_name = string
 type ip = string
 type port = int64

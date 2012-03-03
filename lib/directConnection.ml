@@ -48,8 +48,9 @@ let connect a b =
       lwt [success_a; success_b] = Lwt_list.map_p (fun (node, listen_to, connect_to, ips) ->
         let args = listen_to :: connect_to :: token :: ips in
         let rpc = Rpc.create_request "try_connecting_to" args in
-        Nodes.send_blocking node rpc >>= fun results ->
-        return (list_of_ips_from_string results)
+        try Nodes.send_blocking node rpc >>= fun results ->
+          return (list_of_ips_from_string results)
+        with Rpc.Timeout -> return []
       ) [
           (a, node_a_listen, node_b_listen, ips_b); 
           (b, node_b_listen, node_a_listen, ips_a)
