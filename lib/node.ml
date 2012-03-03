@@ -14,6 +14,11 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
+
+open Unix 
+
+
+type port = int64
 (* TODO better categorisation needed (wildcard matches, etc) *)
 type service =
   | HTTP
@@ -46,6 +51,7 @@ and entry = {
   mutable mode: mode;          (* State of the flow entry *)
   mutable depends: entry list; (* Other flow entries that depend on this on *)
 }
+
 
 let make_entry_id =
   let id = ref 0 in
