@@ -23,6 +23,7 @@ open Lwt_list
 
 module Manager = struct
   exception OpenVpnError of string
+  exception MissingOpenVPNArgumentError
 
   type conn_type = {
     ip: string option;
@@ -86,8 +87,12 @@ module Manager = struct
       lwt _ = Lwt_unix.close sock in
       return ((String.sub buf 0 len))
 
+  let type_or_exn = function
+  | [] -> Lwt.fail MissingOpenVPNArgumentError
+  | typ :: args -> return typ
+
   let test args =
-   let typ::args = args in
+    lwt typ = type_or_exn args in
     match typ with
     (* start udp server *)
     | "server_start" -> (
@@ -117,58 +122,60 @@ module Manager = struct
       lwt ip = run_client (int_of_string port) ips in
         (Printf.printf "Received a reply from ip %s \n%!" ip);
         return (ip))
-    | _ ->  Printf.printf "Action %s not supported in test" typ;
-    return ("OK")
+
+    | _ -> (
+      Printf.printf "Action %s not supported in test" typ;
+      return ("OK"))
 
   let connect args =
     let conn_id = conn_db.max_id + 1 in 
     conn_db.max_id <- conn_id;
-    let typ :: args = args in
+    lwt typ = type_or_exn args in
     match typ with
-        | "server" ->
-            let port = List.hd args in
-            Printf.printf "port: %s\n%!" port; 
-            let cmd = Unix.getcwd () ^ "/client_tactics/openvpn/server" in
-            let _ = Unix.create_process cmd 
-                [| ""; port; (string_of_int conn_id) |] 
-                Unix.stdin Unix.stdout Unix.stderr in
+    | "server" ->
+        let port = List.hd args in
+        Printf.printf "port: %s\n%!" port; 
+        let cmd = Unix.getcwd () ^ "/client_tactics/openvpn/server" in
+        let _ = Unix.create_process cmd 
+            [| ""; port; (string_of_int conn_id) |] 
+            Unix.stdin Unix.stdout Unix.stderr in
 (*             lwt _ = Lwt_unix.sleep 1.0 in *)
-            Printf.printf "Server started ...\n%!";
-            let buf = String.create 100 in
-            let fd = Unix.openfile ("./signpost_vpn_server_" ^ (string_of_int
-            conn_id)) [Unix.O_RDONLY]  0o640 in
-            let len = Unix.read fd buf 0 100 in 
-            Printf.printf "process created with pid %s...\n" (String.sub buf 0
-            len);
-            let pid = int_of_string (String.sub buf 0 (len-1)) in 
-            Printf.printf "process created with pid %d...\n" pid;
-            Hashtbl.add conn_db.conns pid {ip=None;port=(int_of_string port);pid;};
-            lwt _ = Lwt_unix.sleep 1.0 in
-            let ip = Nodes.discover_local_ips ~dev:("tun"^(string_of_int conn_id)) () in 
-            return ((List.hd ip))
+        Printf.printf "Server started ...\n%!";
+        let buf = String.create 100 in
+        let fd = Unix.openfile ("./signpost_vpn_server_" ^ (string_of_int
+        conn_id)) [Unix.O_RDONLY]  0o640 in
+        let len = Unix.read fd buf 0 100 in 
+        Printf.printf "process created with pid %s...\n" (String.sub buf 0
+        len);
+        let pid = int_of_string (String.sub buf 0 (len-1)) in 
+        Printf.printf "process created with pid %d...\n" pid;
+        Hashtbl.add conn_db.conns pid {ip=None;port=(int_of_string port);pid;};
+        lwt _ = Lwt_unix.sleep 1.0 in
+        let ip = Nodes.discover_local_ips ~dev:("tun"^(string_of_int conn_id)) () in 
+        return ((List.hd ip))
 
-        | "client" -> 
-            let ip :: port :: args = args in
-            let cmd = Unix.getcwd () ^ "/client_tactics/openvpn/client" in
-            let _ = Unix.create_process cmd 
-                [| ""; ip; port; (string_of_int conn_id) |] 
-                Unix.stdin Unix.stdout Unix.stderr in
+    | "client" -> 
+        let ip :: port :: args = args in
+        let cmd = Unix.getcwd () ^ "/client_tactics/openvpn/client" in
+        let _ = Unix.create_process cmd 
+            [| ""; ip; port; (string_of_int conn_id) |] 
+            Unix.stdin Unix.stdout Unix.stderr in
 (*             lwt _ = Lwt_unix.sleep 1.0 in *)
-            Printf.printf "Server started ...\n%!";
-            let buf = String.create 100 in
-            let fd = Unix.openfile ("./signpost_vpn_client_" ^ (string_of_int
-            conn_id)) [Unix.O_RDONLY]  0o640 in
-            let len = Unix.read fd buf 0 100 in 
-            let pid = int_of_string (String.sub buf 0 (len-1)) in 
-            Printf.printf "process created with pid %d...\n%!" pid;
-            Hashtbl.add conn_db.conns pid {ip=Some(ip);port=(int_of_string port);pid;};
-            lwt _ = Lwt_unix.sleep 3.0 in
-              Printf.printf "device %s created\n%!" ("tun"^(string_of_int conn_id));
-            let ip = Nodes.discover_local_ips ~dev:("tun"^(string_of_int conn_id)) () in
-              Printf.printf "return ip addr %d\n%!" (List.length ip);
-            return ((List.hd ip))        
-      | _ -> raise(OpenVpnError(
-            (Printf.sprintf "openvpn invalid invalid action %s" typ)))
+        Printf.printf "Server started ...\n%!";
+        let buf = String.create 100 in
+        let fd = Unix.openfile ("./signpost_vpn_client_" ^ (string_of_int
+        conn_id)) [Unix.O_RDONLY]  0o640 in
+        let len = Unix.read fd buf 0 100 in 
+        let pid = int_of_string (String.sub buf 0 (len-1)) in 
+        Printf.printf "process created with pid %d...\n%!" pid;
+        Hashtbl.add conn_db.conns pid {ip=Some(ip);port=(int_of_string port);pid;};
+        lwt _ = Lwt_unix.sleep 3.0 in
+          Printf.printf "device %s created\n%!" ("tun"^(string_of_int conn_id));
+        let ip = Nodes.discover_local_ips ~dev:("tun"^(string_of_int conn_id)) () in
+          Printf.printf "return ip addr %d\n%!" (List.length ip);
+        return ((List.hd ip))        
+    | _ -> raise(OpenVpnError(
+        (Printf.sprintf "openvpn invalid invalid action %s" typ)))
 
   let teardown args =
     (* kill openvpn pid*)
