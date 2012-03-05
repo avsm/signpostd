@@ -169,13 +169,15 @@ let rpc_of_json =
       ("method", String c);
       ("params", Array args);
       ("id", Int id) ] ] ->
-        let string_args = List.map (fun (String s) -> s) args in
+        let string_args = List.rev (List.fold_left
+         (fun a -> function |String b -> b :: a |_ -> a) [] args) in
         Some(Request(c, string_args, id))
     | Object [ "notification", Object [
       ("method", String c);
       ("params", Array args);
       ("id", Null) ] ] ->
-        let string_args = List.map (fun (String s) -> s) args in
+        let string_args = List.rev (List.fold_left
+         (fun a -> function |String b -> b :: a |_ -> a) [] args) in
         Some(Notification(c, string_args))
     | Object [ "response", Object [
       ("result", String result);
