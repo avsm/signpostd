@@ -18,9 +18,14 @@
 open Lwt
 open Printf
 open Int64
+open Unix
+open Re_str
 
 
 (* ---------------------------------------------------------------------- *)
+
+exception InconsistentState of string
+
 
 (* Nodes have a lot of associated information.
  * It is all part of the node store.
@@ -64,6 +69,7 @@ let get_local_ips name =
   let node = get name in
   node.local_ips
 
+
 (* ---------------------------------------------------------------------- *)
 
 (* Sending RPC's to nodes, are defined as part of the Nodes module
@@ -90,6 +96,15 @@ let send_fd = Lwt_unix.(socket PF_INET SOCK_DGRAM 0)
 let register_sender id wakeup_cbk = 
   Hashtbl.replace pending_responses id wakeup_cbk
 
+let register_thread_timer id sleeper = 
+  Lwt_unix.sleep (float_of_int Config.rpc_timeout) >>= fun _ ->
+  match (Lwt.state sleeper) with
+  | Sleep -> begin
+      Hashtbl.remove pending_responses id;
+      return (Lwt.cancel sleeper)
+  end
+  | _ -> return ()
+
 let send_datagram text dst =
   Lwt_unix.sendto send_fd text 0 (String.length text) [] dst
 
@@ -112,21 +127,48 @@ let send_to_server rpc =
 
 let send_blocking name rpc =
   let open Rpc in
-  let sleeper, wakener = Lwt.wait () in
-  let Request(_, _, id) = rpc in
+  let sleeper, wakener = Lwt.task () in
+  let id = match rpc with
+  | Request(_, _, id) -> id 
+  | Tactic_request (_, _, _, id) -> id 
+  | _ -> raise (Sp.Client_error "Invalid rpc send ")
+  in
   register_sender id wakener;
+  register_thread_timer id sleeper;
   send name rpc;
   sleeper >>= fun result ->
-  match result with
-  | Response(Result r, _, _) -> return r
-  | Response(_, Error e, _) -> raise Sp.Client_error e
+  match (Lwt.state sleeper) with
+  | Lwt.Fail(Lwt.Canceled) -> begin
+      (* the RPC timed out, so we return None, 
+       * to the caller *)
+      raise Rpc.Timeout
+  end
+  | Lwt.Fail error -> Lwt.fail error
+  | Lwt.Return result -> begin
+      match result with
+      | Tactic_response(_, Result r, _,_) -> return r
+      | Tactic_response(_, _, Error e, _) -> raise (Sp.Client_error e)
+      | Response(Result r, _, _) -> return r
+      | Response(_, Error e, _) -> raise (Sp.Client_error e)
+  end
+  | Lwt.Sleep -> begin
+      (* The thread should not reach this case,
+       * as it only executes after the thread has
+       * returned or been canceled. If we get here
+       * we should raise an exception! *)
+      raise (InconsistentState "RPC sleeping, but executed?")
+  end
 
 let wake_up_thread_with_reply id data =
   try 
     let wakener = Hashtbl.find pending_responses id in
     Hashtbl.remove pending_responses id;
     return (Lwt.wakeup wakener data)
-  with Not_found -> return ()
+  with Not_found -> 
+    (* the RPC must have timed out. A timeout would
+     * have caused the wakener to be removed from
+     * the pending responses table *)
+    return ()
 
 (* ---------------------------------------------------------------------- *)
 
@@ -140,9 +182,9 @@ let set_local_ips name local_ips =
   let node = get name in
   update name {node with local_ips = local_ips}
 
-let discover_local_ips () =
+let discover_local_ips ?(dev="") () =
   let ip_stream = (Unix.open_process_in
-  (Unix.getcwd () ^ "/client_tactics/get_local_ips")) in
+  (Unix.getcwd () ^ "/client_tactics/get_local_ips " ^ dev)) in
   let buf = String.make 1500 ' ' in
   let len = input ip_stream buf 0 1500 in
   let ips = Re_str.split (Re_str.regexp " ") (String.sub buf 0 (len-1)) in
@@ -192,15 +234,18 @@ let check_for_publicly_accessible_ips name ips =
     let args = (string_of_int listen_port) :: token :: [] in
     let rpc = Rpc.create_request "listen_for_datagrams" args in
     eprintf "About to send RPC and wait for IP results...\n";
-    send_blocking name rpc >>= fun results ->
-    eprintf "Got a list of ips back from the server....\n";
-    let public_ips = list_of_ips_from_string results in
-    let node = get name in
-    update name {node with public_ips = public_ips};
-    let ip_list = list_of_ips_from_string results in
-    List.iter (fun ip -> eprintf "Received for %s\n%!" ip) ip_list;
-    eprintf "About to return...\n";
-    return ip_list
+    try 
+      send_blocking name rpc >>= fun results ->
+      eprintf "Got a list of ips back from the server....\n";
+      let public_ips = list_of_ips_from_string results in
+      let node = get name in
+      update name {node with public_ips = public_ips};
+      let ip_list = list_of_ips_from_string results in
+      List.iter (fun ip -> eprintf "Received for %s\n%!" ip) ip_list;
+      eprintf "About to return...\n";
+      return ip_list
+    with Rpc.Timeout ->
+      return []
   in
   let send_datagrams () =
     (* Wait for a while to allow the RPC to reach the client first. *)

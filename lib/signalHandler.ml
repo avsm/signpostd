@@ -26,6 +26,8 @@ module type HandlerSig = sig
   val handle_request : Rpc.command -> Rpc.arg list -> Sp.request_response Lwt.t
   val handle_notification : Rpc.command -> Rpc.arg list -> unit Lwt.t
   val handle_rpc : Rpc.rpc option -> unit Lwt.t
+  val handle_tactic_request : string -> Rpc.action -> string list ->
+    Sp.request_response Lwt.t
 end
 
 module type Functor = sig

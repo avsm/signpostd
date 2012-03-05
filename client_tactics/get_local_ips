@@ -18,12 +18,35 @@
 set -e
 
 function main {
-  ifconfig -a | 
-  sed -e "s/addr://g" |
+  get_interfaces $1 |
+  strip_addr |
   get_ipv4_addresses |
   exclude_local_addresses |
   exclude_signalling_channel_range |
   xargs
+}
+
+function get_interfaces {
+  interface=$1
+  if [[ interface == "" ]]; then
+    ifconfig -a
+  else
+    ifconfig $1
+  fi
+}
+
+function strip_addr {
+  sed -e "s/addr://g"
+}
+
+function get_ipv4_addresses {
+  grep inet | 
+  grep -v inet6 | 
+  awk '{print $2}' 
+}
+
+function exclude_local_addresses {
+  grep -v -E "(127\.0)"
 }
 
 function exclude_signalling_channel_range {
@@ -35,14 +58,4 @@ function exclude_signalling_channel_range {
   grep -v -E "$signalling_channel_range"
 }
 
-function exclude_local_addresses {
-  grep -v -E "(127\.0)"
-}
-
-function get_ipv4_addresses {
-  grep inet | 
-  grep -v inet6 | 
-  awk '{print $2}' 
-}
-
-main;
+main $1;
