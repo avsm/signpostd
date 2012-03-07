@@ -168,7 +168,9 @@ let rpc_of_json =
       ("method", String c);
       ("params", Array args);
       ("id", Int id) ] ] ->
-        let string_args = List.map (fun (String s) -> s) args in
+        let string_args = List.map (function
+          | String s -> s
+          | Int i -> (string_of_int (to_int i))) args in
         Some(Request(c, string_args, id))
     | Object [ "notification", Object [
       ("method", String c);

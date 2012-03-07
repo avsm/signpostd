@@ -19,6 +19,32 @@ open Lwt
 open Printf
 open Int64
 
+let config_json =
+  let open Json in
+  Object [
+    ("user", String Config.user);
+    ("signpost_number", Int (Int64.of_int Config.signpost_number));
+    ("domain", String Config.domain);
+    ("external_ip", String Config.external_ip);
+    ("external_dns", String Config.external_dns)
+  ]
+
+let config_datagram =
+  let open Json in
+  to_string(Object [
+    "response", (Object [
+      ("result", config_json);
+      ("error", Null);
+      ("id", Int (Int64.of_int 1))
+    ])
+   ])
+
+let handle_config_discovery ip port_str =
+  let port = Int64.of_int (int_of_string port_str) in
+  Printf.printf "Sending reply to %s:%Li\n%!" ip port;
+  let addr = Nodes.addr_from ip port in
+  Nodes.send_datagram config_datagram addr >>= fun len ->
+  return ()
 
 let handle_rpc =
   let open Rpc in function
@@ -39,9 +65,16 @@ let handle_rpc =
       eprintf "ERROR: Received an RPC that the server can't handle\n%!";
       return ()
 
-let handle_request command args =
-  eprintf "The server received a REQUEST RPC, but doesn't handle those.\n%!";
-  return Sp.NoResponse
+let handle_request command args = match command with
+  | "config_discovery" -> begin
+    let ip :: port :: _ = args in
+    (handle_config_discovery ip port) >> 
+    return Sp.NoResponse
+  end
+  | _ -> begin
+    eprintf "The server received a REQUEST RPC, but doesn't handle those.\n%!";
+    return Sp.NoResponse
+  end
 
 let handle_tactic_request tactic action args =
   eprintf "The server received a REQUEST RPC, but doesn't handle those.\n%!";

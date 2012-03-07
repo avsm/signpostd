@@ -20,6 +20,12 @@ val send : Sp.name -> Rpc.rpc -> unit Lwt.t
 val send_to_server : Rpc.rpc -> unit Lwt.t
 val send_blocking : Sp.name -> Rpc.rpc -> string Lwt.t
 
+(* Low level method for sending an RPC directly to an address *)
+val send_datagram : string -> Lwt_unix.sockaddr -> int Lwt.t
+
+(* Convenience method *)
+val addr_from : Sp.ip -> Sp.port -> Unix.sockaddr
+
 (* Let the SignalHandler wake up a pending sender *)
 val wake_up_thread_with_reply : Rpc.id -> Rpc.rpc -> unit Lwt.t
 
