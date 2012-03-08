@@ -21,6 +21,12 @@ open Int64
 exception Timeout
 
 
+let new_id =
+	let count = ref 0L in
+	(fun () -> count := Int64.add 1L !count; !count)
+
+let rpc_id = new_id
+
 type node_name = string
 type ip = string
 type port = int64
@@ -205,7 +211,7 @@ let rpc_of_string s =
   | Some x -> rpc_of_json x
 
 let create_request method_name args =
-  let id = Json.new_id () in
+  let id = rpc_id () in
   Request(method_name, args, id)
 
 let create_notification method_name args =
@@ -218,11 +224,11 @@ let create_response_error error id =
   Response(NoResult, Error error, id)
 
 let create_tactic_request tactic action args =
-  let id = Json.new_id () in
+  let id = rpc_id () in
   Tactic_request(tactic, action, args, id)
 
 let create_tactic_response tactic result error args =
-  let id = Json.new_id () in
+  let id = rpc_id () in
   Tactic_request(tactic, result, error , id)
 
 let create_tactic_response_ok tactic result id =
