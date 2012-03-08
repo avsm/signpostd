@@ -79,7 +79,7 @@ let forward_dns_query_to_sp packet q =
   (* Normalise the domain names to lower case *)
   let dst = String.lowercase (List.hd q.DP.q_name) in
   let src = !node_name in 
-  let q_name = ([dst; src; ] @ (Re_str.split (Re_str.regexp "\.") our_domain)) in 
+  let q_name = ([dst; src; ] @ (Re_str.(split (regexp_string ".") our_domain))) in 
   let query = DP.({q_name=q_name; q_type=`A; q_class=`IN; }) in 
   let dns_q = DP.({id=1; 
     detail=(DP.build_detail DP.({qr=`Query;opcode=`Query;aa=true;tc=false;
@@ -106,7 +106,7 @@ let get_response packet q =
   bind_ns_fd ();
   let qnames = List.map String.lowercase q.q_name in
   eprintf "Q: %s\n%!" (String.concat " " qnames);
-  let domain = Re_str.split  (Re_str.regexp "\.") our_domain in 
+  let domain = Re_str.(split (regexp_string ".") our_domain) in 
   if (compareVs (List.rev qnames) (List.rev domain)) then
     forward_dns_query_to_sp packet q 
   else
@@ -123,12 +123,17 @@ let dns_t () =
   lwt fd, src = Dns_server.bind_fd ~address:"127.0.0.1" ~port:53 in
     Dns_server.listen ~fd ~src ~dnsfn 
 
+let get_hello_rpc ips =
+  let string_port = (string_of_int (to_int !node_port)) in
+  let args = [!node_name; !node_ip] @ [string_port] @ ips in
+  Rpc.create_notification "hello" args
+
 let update_server_if_state_has_changed () =
   let ips = Nodes.discover_local_ips () in
   match (ips <> !local_ips) with
   | true -> begin
       local_ips := ips;
-      let hello_rpc = Rpc.Hello (!node_name, !node_ip, !node_port, ips) in
+      let hello_rpc = get_hello_rpc !local_ips in
       Nodes.send_to_server hello_rpc
   end
   | false ->

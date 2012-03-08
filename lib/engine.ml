@@ -34,3 +34,12 @@ let iter_over_tactics a b =
 let connect a b =
   eprintf "Engine is trying to connect %s and %s\n" a b;
   iter_over_tactics a b
+
+let tactic_by_name name =
+  try 
+    let tactic = List.find (fun t -> 
+        let module Tactic = (val t : Sp.TacticSig) in
+        Tactic.name () = name) tactics in
+    Some(tactic)
+  with Not_found ->
+    None
