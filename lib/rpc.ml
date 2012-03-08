@@ -148,6 +148,13 @@ let rpc_to_json rpc =
     | _ -> raise (Invalid_sp_msg)
    ]
 
+let get_entry_of_name entries name =
+  let find_fun = function
+    | (n, entry) -> n=name
+    | _ -> false in
+  let (_, entry) = List.find find_fun entries in
+  entry
+
 let rpc_of_json =
   let open Json in
   function
@@ -164,10 +171,10 @@ let rpc_of_json =
         ("error", error); ("id", Int id) ]) ]) ] -> 
           Some (Tactic_response (name, (result_of_json result), 
           (error_of_json error), id) )
-    | Object [ "request", Object [
-      ("method", String c);
-      ("params", Array args);
-      ("id", Int id) ] ] ->
+    | Object [ "request", Object entries ] ->
+        let String c = get_entry_of_name entries "method" in
+        let Array args = get_entry_of_name entries "params" in
+        let Int id = get_entry_of_name entries "id" in
         let string_args = List.map (function
           | String s -> s
           | Int i -> (string_of_int (to_int i))) args in
