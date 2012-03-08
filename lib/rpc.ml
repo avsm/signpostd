@@ -79,8 +79,6 @@ type rpc =
   | Tactic_response of string * result * error * id
 
 
-let rpc_id_counter = ref 0
-
 let rec string_list_of_json_list = function
     | (Json.String(ip)) :: ips -> [ip] @ (string_list_of_json_list ips)
     | [] -> []
@@ -206,12 +204,8 @@ let rpc_of_string s =
   | None -> None
   | Some x -> rpc_of_json x
 
-let fresh_id () =
-  rpc_id_counter := !rpc_id_counter + 1;
-  of_int !rpc_id_counter
-
 let create_request method_name args =
-  let id = fresh_id () in
+  let id = Json.new_id () in
   Request(method_name, args, id)
 
 let create_notification method_name args =
@@ -224,11 +218,11 @@ let create_response_error error id =
   Response(NoResult, Error error, id)
 
 let create_tactic_request tactic action args =
-  let id = fresh_id () in
+  let id = Json.new_id () in
   Tactic_request(tactic, action, args, id)
 
 let create_tactic_response tactic result error args =
-  let id = fresh_id () in
+  let id = Json.new_id () in
   Tactic_request(tactic, result, error , id)
 
 let create_tactic_response_ok tactic result id =
