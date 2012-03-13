@@ -1,5 +1,7 @@
 (*
  * Copyright (c) 2012 Anil Madhavapeddy <anil@recoil.org>
+ * Copyright (c) 2012 Sebastian Probst Eide <sebastian.probst.eide@gmail.com>
+ * Copyright (c) 2012 Charalampos Rotsos <cr409@cl.cam.ac.uk>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -15,194 +17,159 @@
  *)
 
 
+(* This module constructs and destructs RPCs following the JSON-RPC
+ * specification (http://json-rpc.org/wiki/specification).
+ * Tactic specific RPCs are layered on top of JSON-RPC through
+ * making the method name follow this pattern:
+ *
+ *    Tactic#Action#Method
+ *
+ * Where:
+ * - tactic: is the name of the tactic being invoked
+ * - action: is one of test, connect or teardown
+ * - method: is the piece of functionality being invoked
+ *)
+
+
 open Int64
 
 
 exception Timeout
+exception BadRpc of string
 
 
-let new_id =
-	let count = ref 0L in
-	(fun () -> count := Int64.add 1L !count; !count)
+type tactic_name = string
 
-let rpc_id = new_id
+type action =
+  | TEST
+  | CONNECT
+  | TEARDOWN
 
-type node_name = string
-type ip = string
-type port = int64
+type command =
+  | TacticCommand of tactic_name * action * string
+  | Command of string
 
-type command = string
 type arg = string
 type id = int64
 
-exception Result_error of string
-type result = 
+type result =
   | Result of string
-  | NoResult
-let json_of_result = function
-    | Result(str) -> Json.String str
-    | NoResult -> Json.Null
-let result_of_json = function
-    | Json.String str -> Result(str)
-    | Json.Null -> NoResult
-    | _ -> raise (Result_error("result_of_json"))
-    
-exception Error_error of string
-type error = 
   | Error of string
-  | NoError
-let json_of_error = function
-    | Error(str) -> Json.String str
-    | NoError -> Json.Null
-let error_of_json = function
-    | Json.String str -> Error(str)
-    | Json.Null -> NoError
-    | _ -> raise (Error_error("error_of_json"))
 
-exception Invalid_action of string
-type action =
-    | TEST
-    | CONNECT
-    | TEARDOWN
-let string_of_action = function
-    | TEST -> "test"
-    | CONNECT -> "connect"
-    | TEARDOWN -> "teardown"
-let action_of_string = function
-    | "test" -> TEST
-    | "connect" -> CONNECT
-    | "teardown" -> TEARDOWN
-    | act -> let msg = Printf.sprintf "Invalid action %s" act in 
-    raise (Invalid_action(msg))
-
-exception Invalid_sp_msg
-type rpc = 
-  | Hello of node_name * ip * port * ip list
+type t =
   | Request of command * arg list * id
+  | Response of result * id
   | Notification of command * arg list
-  | Response of result * error * id
-  | Tactic_request of string * action * arg list * id
-  | Tactic_response of string * result * error * id
 
 
-let rec string_list_of_json_list = function
-    | (Json.String(ip)) :: ips -> [ip] @ (string_list_of_json_list ips)
-    | [] -> []
-    | _ -> raise (Invalid_argument "Invalid arg on string_list_of_json_list")
+(**********************************************************************
+ * Utils **************************************************************)
 
-let rec json_list_of_string_list = function
-    | ip :: ips -> [(Json.String ip)] @ (json_list_of_string_list ips)
-    | [] -> []
+let id_count = ref 0L
 
-let rpc_to_json rpc =
-  let open Json in
-  Object [
-    match rpc with
-    | Hello (n, i, p, ips) ->
-        "hello", (Array [ String n; String i; Int p; 
-        Array (json_list_of_string_list ips)])
-    (* Based on the specifications of JSON-RPC:
-     * http://json-rpc.org/wiki/specification *)
-    | Request (c, string_args, id) -> 
-        let args = List.map (fun a -> String a) string_args in
-        "request", (Object [
-          ("method", String c);
-          ("params", Array args);
-          ("id", Int id)
-        ])
-    | Notification (c, string_args) -> 
-        let args = List.map (fun a -> String a) string_args in
-        "notification", (Object [
-          ("method", String c);
-          ("params", Array args);
-          ("id", Null)
-        ])
-    (* When there was an error, the result must be nil *)
-    | Response (_r, Error e, id) -> 
-        "response", (Object [
-          ("result", Null);
-          ("error", String e);
-          ("id", Int id)
-        ])
-    (* When there is a result, the error has to be nil *)
-    | Response (Result r, _e, id) -> 
-        "response", (Object [
-          ("result", String r);
-          ("error", Null);
-          ("id", Int id)
-        ])
-    | Tactic_request (name, act, args, id) ->
-            "request", (Object [
-                "tactic", (Object [
-                    ("name", String name);
-                    ("action", String (string_of_action act));
-                    ("args", Array (json_list_of_string_list args));
-                    ("id", Int id)
-                ])
-            ])
-    | Tactic_response (name, result, error, id) ->
-            "response", (Object [
-                "tactic", (Object [
-                    ("name", String name);
-                    ("result", (json_of_result result));
-                    ("error", (json_of_error error));
-                    ("id", Int id)
-                ])
-            ])
-    | _ -> raise (Invalid_sp_msg)
-   ]
+let rpc_id () =
+	id_count := Int64.add 1L !id_count;
+  !id_count
+
+let string_of_action = function
+  | TEST -> "test"
+  | CONNECT -> "connect"
+  | TEARDOWN -> "teardown"
+
+let action_of_string = function
+  | "test" -> TEST
+  | "connect" -> CONNECT
+  | "teardown" -> TEARDOWN
+  | act ->  begin
+      let msg = Printf.sprintf "Invalid action %s" act in 
+      raise (BadRpc msg)
+  end
+
+(**********************************************************************
+ * Decode JSON-RPCs ***************************************************)
 
 let get_entry_of_name entries name =
   let find_fun = function
     | (n, entry) -> n=name
     | _ -> false in
-  let (_, entry) = List.find find_fun entries in
-  entry
+  try (let (_, entry) = List.find find_fun entries in
+       entry)
+  with Not_found -> None
 
-let rpc_of_json =
+let construct_command command =
+  let open Re_str in
+  let rxp = regexp "#" in
+  match split rxp command with
+  | c :: [] -> Command c
+  | tactic :: action :: c :: [] -> TacticCommand(tactic, (action_of_string action), c)
+  | _ -> raise (BadRpc "Invalid method structure")
+
+let construct_args string_args =
+  let map_fn = function
+    | Json.String s -> s
+    | _ -> raise (BadRpc "Invalid non-string argument") in
+  List.map map_fn string_args
+
+let construct_id = function
+  | Int id -> id
+  | _ -> raise (BadRpc "Invalid RPC Id")
+
+let construct_request_rpc command args id =
+  let c = construct_command command in
+  let a = construct_args args in
+  let i = construct_id id in
+  Request(c, a, i)
+
+let construct_response_rpc result id =
+  let i = (construct_id id) in
+  Response(result, i)
+
+construct_notification_rpc command args =
+  let c = construct_command command in
+  let a = construct_args args in
+  Notification(c, a)
+
+let check_for_valid_request id command entries =
+  match get_entry_of_name entries "params" with
+  | Json.Array args -> construct_request_rpc command args id
+  | _ -> raise BadRpc "Failed parsing as request"
+
+let check_for_valid_response id entries =
   let open Json in
-  function
-    | Object [ "hello", (Array [String n; String i; Int p; Array ips]) ] ->
-        Some (Hello (n,i, p, (string_list_of_json_list ips)))
-    | Object [ "request", (Object [ "tactic", (Object [
-      ("name", String name); ("action", String act);
-      ("args", Array args); ("id", Int id) ])])] ->
-        Some (Tactic_request (name, (action_of_string act), 
-        (string_list_of_json_list args), id))
-    | Object [ "response", (Object [
-      "tactic", (Object [
-        ("name", String name); ("result", result);
-        ("error", error); ("id", Int id) ]) ]) ] -> 
-          Some (Tactic_response (name, (result_of_json result), 
-          (error_of_json error), id) )
-    | Object [ "request", Object entries ] ->
-        let String c = get_entry_of_name entries "method" in
-        let Array args = get_entry_of_name entries "params" in
-        let Int id = get_entry_of_name entries "id" in
-        let string_args = List.map (function
-          | String s -> s
-          | Int i -> (string_of_int (to_int i))) args in
-        Some(Request(c, string_args, id))
-    | Object [ "notification", Object [
-      ("method", String c);
-      ("params", Array args);
-      ("id", Null) ] ] ->
-        let string_args = List.map (fun (String s) -> s) args in
-        Some(Notification(c, string_args))
-    | Object [ "response", Object [
-      ("result", String result);
-      ("error", Null);
-      ("id", Int id) ] ] ->
-        Some(Response(Result result, NoError, id))
-    | Object [ "response", Object [
-      ("result", Null);
-      ("error", String e);
-      ("id", Int id) ] ] ->
-        Some(Response(NoResult, Error e, id))
-    | _ -> None
- 
-let rpc_to_string rpc =
-  Json.to_string (rpc_to_json rpc)
+  let result = get_entry_of_name entries "result" in
+  let error = get_entry_of_name entries "error" in
+  match (result, error) with
+  | (String result, Null) -> construct_response_rpc (Result result) id
+  | (Null, String error) -> construct_response_rpc (Error error) id
+  | _ -> raise (BadRpc "Failed parsing as response")
+
+let check_for_valid_notification command entries =
+  let args = get_entry_of_name entries "args" in
+  match args with
+  | Json.Array args -> construct_notification_rpc command args
+  | _ -> raise (BadRpc "Failed parsin as notification")
+
+let rpc_classifier entries =
+  let open Json in
+  let param_id = get_entry_of_name entries "id" in
+  let param_method = get_entry_of_name entries "method" in
+  match (param_id, param_method) with 
+  | (Id id, String command) -> check_for_valid_request id command entries
+  | (Id id, None) -> check_for_valid_response id entries
+  | (None, String command) -> check_for_valid_notification command entries
+  | _ -> raise (BadRpc "Failed highlevel JSON-RPC parsin test")
+
+let rpc_of_json = function
+  | Json.Object entries ->
+      try (Some(rpc_classifier entries))
+      with (BadRpc error) -> begin
+        eprintf "Rpc parsing failed with error %s\n%!" error;
+        None
+      end
+  | _ -> begin
+    eprintf "Rpc parsing failed. The message did not contain a top level object\n%!";
+    None
+  end
 
 let rpc_of_string s =
   let json = try Some (Json.of_string s) with _ -> None in
@@ -210,30 +177,66 @@ let rpc_of_string s =
   | None -> None
   | Some x -> rpc_of_json x
 
+(**********************************************************************
+ * Encode JSON-RPCs ***************************************************)
+
+let args_to_json args =
+  Json.Array (List.map (fun a -> Json.String a) args)
+
+let command_to_json =
+  let open Json in
+  function
+  | TacticCommand(tactic_name, action, command) -> 
+        String (sprintf "%s#%s#%s" tactic_name (string_of_action action) command)
+  | Command c -> String c
+
+let result_to_json =
+  let open Json in
+  function
+  | Result r -> [("result", String r);("error", Null)]
+  | Error e -> [("result", Null);("error", String e)]
+
+let rpc_to_json rpc =
+  let open Json in
+  Object match rpc with
+    | Request (c, args, id) -> 
+       [("method", command_to_json c);
+        ("params", args_to_json args);
+        ("id", Int id)]
+    | Notification (c, args) -> 
+       [("method", command_to_json c);
+        ("params", args_to_json args);
+        ("id", Null)]
+    (* When there is a result, the error has to be nil *)
+    | Response (r, id) -> 
+        ("id", Int id) :: (result_to_json r)
+    | _ -> raise (Invalid_sp_msg)
+
+let rpc_to_string rpc =
+  Json.to_string (rpc_to_json rpc)
+
+(**********************************************************************
+ * Helper methods to create valid JSON-RPCs ***************************)
+
+(* REQUESTS *)
 let create_request method_name args =
   let id = rpc_id () in
-  Request(method_name, args, id)
+  Request(Command(method_name), args, id)
 
+let create_tactic_request tactic action method_name args =
+  let id = rpc_id () in
+  Request(TacticCommand(tactic, action, method_name), args, id)
+
+(* NOTIFICATION *)
 let create_notification method_name args =
-  Notification(method_name, args)
+  Notification(Command(method_name), args)
 
+let create_tactic_notification tactic action method_name args =
+  Notification(TacticCommand(tactic, action, method_name), args)
+
+(* RESPONSE *)
 let create_response_ok result id =
-  Response(Result result, NoError, id)
+  Response (Result result, id)
 
 let create_response_error error id =
-  Response(NoResult, Error error, id)
-
-let create_tactic_request tactic action args =
-  let id = rpc_id () in
-  Tactic_request(tactic, action, args, id)
-
-let create_tactic_response tactic result error args =
-  let id = rpc_id () in
-  Tactic_request(tactic, result, error , id)
-
-let create_tactic_response_ok tactic result id =
-    Tactic_response (tactic, Result(result), 
-    NoError, id) 
-
-let create_tactic_response_err tactic err id =
-    Tactic_response (tactic, NoResult, Error(err), id) 
+  Response (Error error, id)

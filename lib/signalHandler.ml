@@ -25,55 +25,37 @@ open Int64
 module type HandlerSig = sig
   val handle_request : Rpc.command -> Rpc.arg list -> Sp.request_response Lwt.t
   val handle_notification : Rpc.command -> Rpc.arg list -> unit Lwt.t
-  val handle_rpc : Rpc.rpc option -> unit Lwt.t
-  val handle_tactic_request : string -> Rpc.action -> string list ->
-    Sp.request_response Lwt.t
 end
-(*
-module Signalling (Handler : SignallingHandlerSig) = struct
-  exception Client_error
-  exception Signal_error of string
-*)
+
 module type Functor = sig
   val thread : address:Sp.ip -> port:Sp.port -> unit Lwt.t
 end
 
 module Make (Handler : HandlerSig) = struct
-  let dispatch_rpc rpc = 
+  let classify rpc =
     let open Rpc in
     match rpc with
-    | Some(Tactic_request(tactic, act, args, id)) ->(
-      lwt v = (Handler.handle_tactic_request tactic act args) in
-      match v with
-      | Sp.ResponseValue v -> 
-          Nodes.send_to_server (Rpc.create_tactic_response_ok tactic v id) 
-      | Sp.ResponseError e -> 
-          Nodes.send_to_server (Rpc.create_tactic_response_err tactic e id) 
-      | Sp.NoResponse -> return ())
-    | Some(Tactic_response(t, r, e, id)) ->
-        Nodes.wake_up_thread_with_reply id (Tactic_response(t, r, e, id))    
-    | Some(Response(r, e, id)) ->
-        Nodes.wake_up_thread_with_reply id (Response(r, e, id))
-    (* Only clients deal with Requests... so this code makes no sense from a
-     * server perspective... refactor? *)
-    | Some(Request(c, args, id)) -> begin
+    | Request(c, args, id) -> begin
         lwt response = (Handler.handle_request c args) in
         match response with
         | Sp.ResponseValue v -> begin
-            let resp = (Rpc.create_response_ok v id) in
+            let resp = (create_response_ok v id) in
             Nodes.send_to_server resp 
         end
         | Sp.ResponseError e -> begin
             let error = Rpc.create_response_error e id in
             Nodes.send_to_server error 
         end
-        | Sp.NoResponse -> begin
-            return ()
-        end
+        | Sp.NoResponse -> return ()
     end
-    | Some(Notification(c, args)) ->
+    | Response(r, id) ->
+        Nodes.wake_up_thread_with_reply id (Response(r, id))
+    | Notification(c, args) ->
         Handler.handle_notification c args
-    | data -> Handler.handle_rpc data
+
+  let dispatch_rpc = function
+    | Some rpc -> classify rpc
+    | None -> eprintf "The signal handler was asked to dispatch a 'None'-RPC\n%!"
 
   (* Listens on port Config.signal_port *)
   let bind_fd ~address ~port =
