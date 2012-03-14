@@ -55,7 +55,9 @@ module Make (Handler : HandlerSig) = struct
 
   let dispatch_rpc = function
     | Some rpc -> classify rpc
-    | None -> eprintf "The signal handler was asked to dispatch a 'None'-RPC\n%!"
+    | None -> 
+        eprintf "The signal handler was asked to dispatch a 'None'-RPC\n%!";
+        return ()
 
   (* Listens on port Config.signal_port *)
   let bind_fd ~address ~port =

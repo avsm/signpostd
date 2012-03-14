@@ -32,6 +32,7 @@
 
 
 open Int64
+open Printf
 
 
 exception Timeout
@@ -39,6 +40,8 @@ exception BadRpc of string
 
 
 type tactic_name = string
+
+type method_name = string
 
 type action =
   | TEST
@@ -92,9 +95,11 @@ let get_entry_of_name entries name =
   let find_fun = function
     | (n, entry) -> n=name
     | _ -> false in
-  try (let (_, entry) = List.find find_fun entries in
-       entry)
-  with Not_found -> None
+  try 
+    let (_, entry) = List.find find_fun entries in
+    Some(entry)
+  with Not_found -> 
+    None
 
 let construct_command command =
   let open Re_str in
@@ -110,56 +115,61 @@ let construct_args string_args =
     | _ -> raise (BadRpc "Invalid non-string argument") in
   List.map map_fn string_args
 
-let construct_id = function
-  | Int id -> id
-  | _ -> raise (BadRpc "Invalid RPC Id")
-
 let construct_request_rpc command args id =
   let c = construct_command command in
   let a = construct_args args in
-  let i = construct_id id in
-  Request(c, a, i)
+  Request(c, a, id)
 
 let construct_response_rpc result id =
-  let i = (construct_id id) in
-  Response(result, i)
+  Response(result, id)
 
-construct_notification_rpc command args =
+let construct_notification_rpc command args =
   let c = construct_command command in
   let a = construct_args args in
   Notification(c, a)
 
 let check_for_valid_request id command entries =
   match get_entry_of_name entries "params" with
-  | Json.Array args -> construct_request_rpc command args id
-  | _ -> raise BadRpc "Failed parsing as request"
+  | Some(Json.Array args) -> construct_request_rpc command args id
+  | Some(_thing_else) -> 
+      raise (BadRpc "Failed parsing request. Received malformed parameters")
+  | None -> 
+      raise (BadRpc "Failed parsing as request. Did not contain any parameters")
 
 let check_for_valid_response id entries =
   let open Json in
   let result = get_entry_of_name entries "result" in
   let error = get_entry_of_name entries "error" in
   match (result, error) with
-  | (String result, Null) -> construct_response_rpc (Result result) id
-  | (Null, String error) -> construct_response_rpc (Error error) id
-  | _ -> raise (BadRpc "Failed parsing as response")
+  | (Some(String result), Some(Null)) -> (construct_response_rpc (Result result) id)
+  | (Some(Null), Some(String error)) -> (construct_response_rpc (Error error) id)
+  | (Some(_thing_else), _) -> 
+      raise (BadRpc "Failed parsing response. Malformed result")
+  | (_, Some(_thing_else)) -> 
+      raise (BadRpc "Failed parsing response. Malformed error")
+  | (None, None) -> 
+      raise (BadRpc "Failed parsing as response. Neither the result or error fields are present.")
 
 let check_for_valid_notification command entries =
   let args = get_entry_of_name entries "args" in
   match args with
-  | Json.Array args -> construct_notification_rpc command args
-  | _ -> raise (BadRpc "Failed parsin as notification")
+  | Some(Json.Array args) -> construct_notification_rpc command args
+  | Some(_thing_else) -> 
+      raise (BadRpc "Failed at parsing as notification. Malformed arguments")
+  | None -> raise (BadRpc "Failed parsing as notification. Missing arguments")
 
 let rpc_classifier entries =
   let open Json in
   let param_id = get_entry_of_name entries "id" in
   let param_method = get_entry_of_name entries "method" in
   match (param_id, param_method) with 
-  | (Id id, String command) -> check_for_valid_request id command entries
-  | (Id id, None) -> check_for_valid_response id entries
-  | (None, String command) -> check_for_valid_notification command entries
-  | _ -> raise (BadRpc "Failed highlevel JSON-RPC parsin test")
+  | (Some(Int id), Some(String command)) -> check_for_valid_request id command entries
+  | (Some(Int id), None) -> check_for_valid_response id entries
+  | (None, Some(String command)) -> check_for_valid_notification command entries
+  | _ -> raise (BadRpc "Failed highlevel JSON-RPC parsing test")
 
-let rpc_of_json = function
+let rpc_of_json = 
+  function
   | Json.Object entries ->
       try (Some(rpc_classifier entries))
       with (BadRpc error) -> begin
@@ -198,7 +208,7 @@ let result_to_json =
 
 let rpc_to_json rpc =
   let open Json in
-  Object match rpc with
+  let object_data = match rpc with
     | Request (c, args, id) -> 
        [("method", command_to_json c);
         ("params", args_to_json args);
@@ -207,10 +217,9 @@ let rpc_to_json rpc =
        [("method", command_to_json c);
         ("params", args_to_json args);
         ("id", Null)]
-    (* When there is a result, the error has to be nil *)
     | Response (r, id) -> 
-        ("id", Int id) :: (result_to_json r)
-    | _ -> raise (Invalid_sp_msg)
+        ("id", Int id) :: (result_to_json r) in
+  Object object_data
 
 let rpc_to_string rpc =
   Json.to_string (rpc_to_json rpc)

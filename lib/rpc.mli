@@ -23,13 +23,15 @@ exception BadRpc of string
 
 type tactic_name = string
 
+type method_name = string
+
 type action =
   | TEST
   | CONNECT
   | TEARDOWN
 
 type command =
-  | TacticCommand of tactic_name * action * string
+  | TacticCommand of tactic_name * action * method_name
   | Command of string
 
 type arg = string
@@ -50,9 +52,9 @@ val rpc_of_string : string -> t option
 val rpc_to_string : t -> string
 
 (* Convenience method for creating valid RPCs *)
-val create_request : string -> arg list -> t
-val create_tactic_request : tactic_name -> action -> string -> t
-val create_notification : string -> arg list -> t
-val create_tactic_notification : tactic_name -> action -> string -> arg list -> t
+val create_request : method_name -> arg list -> t
+val create_tactic_request : tactic_name -> action -> method_name -> arg list -> t
+val create_notification : method_name -> arg list -> t
+val create_tactic_notification : tactic_name -> action -> method_name -> arg list -> t
 val create_response_ok : string -> id -> t
 val create_response_error : string -> id -> t

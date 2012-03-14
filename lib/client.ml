@@ -123,12 +123,17 @@ let dns_t () =
   lwt fd, src = Dns_server.bind_fd ~address:"127.0.0.1" ~port:53 in
     Dns_server.listen ~fd ~src ~dnsfn 
 
+let get_hello_rpc ips =
+  let string_port = (string_of_int (to_int !node_port)) in
+  let args = [!node_name; !node_ip] @ [string_port] @ ips in
+  Rpc.create_notification "hello" args
+
 let update_server_if_state_has_changed () =
   let ips = Nodes.discover_local_ips () in
   match (ips <> !local_ips) with
   | true -> begin
       local_ips := ips;
-      let hello_rpc = Rpc.Hello (!node_name, !node_ip, !node_port, ips) in
+      let hello_rpc = get_hello_rpc !local_ips in
       Nodes.send_to_server hello_rpc
   end
   | false ->

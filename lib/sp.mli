@@ -36,11 +36,14 @@ type request_response =
   | ResponseError of string
   | NoResponse
 
-
 module type TacticSig = sig
-  val name : unit -> string
+  val name : unit -> Rpc.tactic_name
   (* val provides : unit -> channel_property list *)
   val connect : name -> name -> unit Lwt.t
+  val handle_request : Rpc.action -> Rpc.method_name -> Rpc.arg list ->
+    request_response Lwt.t
+  val handle_notification : Rpc.action -> Rpc.method_name -> Rpc.arg list ->
+    unit Lwt.t
 end
 
 
