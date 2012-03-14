@@ -151,7 +151,7 @@ let check_for_valid_response id entries =
       raise (BadRpc "Failed parsing as response. Neither the result or error fields are present.")
 
 let check_for_valid_notification command entries =
-  let args = get_entry_of_name entries "args" in
+  let args = get_entry_of_name entries "params" in
   match args with
   | Some(Json.Array args) -> construct_notification_rpc command args
   | Some(_thing_else) -> 
@@ -165,7 +165,7 @@ let rpc_classifier entries =
   match (param_id, param_method) with 
   | (Some(Int id), Some(String command)) -> check_for_valid_request id command entries
   | (Some(Int id), None) -> check_for_valid_response id entries
-  | (None, Some(String command)) -> check_for_valid_notification command entries
+  | (Some(Null), Some(String command)) -> check_for_valid_notification command entries
   | _ -> raise (BadRpc "Failed highlevel JSON-RPC parsing test")
 
 let rpc_of_json = 
