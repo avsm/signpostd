@@ -87,13 +87,8 @@ module Manager = struct
       lwt _ = Lwt_unix.close sock in
       return ((String.sub buf 0 len))
 
-  let type_or_exn = function
-  | [] -> Lwt.fail MissingOpenVPNArgumentError
-  | typ :: args -> return typ
-
-  let test args =
-    lwt typ = type_or_exn args in
-    match typ with
+  let test kind args =
+    match kind with
     (* start udp server *)
     | "server_start" -> (
       Printf.printf "starting server...\n%!";
@@ -124,14 +119,13 @@ module Manager = struct
         return (ip))
 
     | _ -> (
-      Printf.printf "Action %s not supported in test" typ;
+      Printf.printf "Action %s not supported in test" kind;
       return ("OK"))
 
-  let connect args =
+  let connect kind args =
     let conn_id = conn_db.max_id + 1 in 
     conn_db.max_id <- conn_id;
-    lwt typ = type_or_exn args in
-    match typ with
+    match kind with
     | "server" ->
         let port = List.hd args in
         Printf.printf "port: %s\n%!" port; 
@@ -175,7 +169,7 @@ module Manager = struct
           Printf.printf "return ip addr %d\n%!" (List.length ip);
         return ((List.hd ip))        
     | _ -> raise(OpenVpnError(
-        (Printf.sprintf "openvpn invalid invalid action %s" typ)))
+        (Printf.sprintf "openvpn invalid invalid action %s" kind)))
 
   let teardown args =
     (* kill openvpn pid*)

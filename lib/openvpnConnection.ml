@@ -43,17 +43,17 @@ let pairwise_connection_test a b =
   try 
 (*   let (dst_ip, dst_port) = Nodes.signalling_channel a in *)
   let rpc = (Rpc.create_tactic_request "openvpn" 
-      Rpc.TEST "" ["server_start"; (string_of_int openvpn_port)]) in
+      Rpc.TEST "server_start" [(string_of_int openvpn_port)]) in
   lwt res = (Nodes.send_blocking a rpc) in
   Printf.printf "UDP server started at %s\n%!" a;
 
   let ips = Nodes.get_local_ips a in 
   let rpc = (Rpc.create_tactic_request "openvpn" 
-      Rpc.TEST "" (["client"; (string_of_int openvpn_port)] @ ips)) in
+      Rpc.TEST "client" ([(string_of_int openvpn_port)] @ ips)) in
   lwt res = (Nodes.send_blocking b rpc) in 
   
   let rpc = (Rpc.create_tactic_request "openvpn" 
-      Rpc.TEST "" ["server_stop"; (string_of_int openvpn_port)]) in
+      Rpc.TEST "server_stop" [(string_of_int openvpn_port)]) in
   lwt res = (Nodes.send_blocking a rpc) in 
    return (true, res)
   with exn ->
@@ -64,7 +64,7 @@ let pairwise_connection_test a b =
 
 let start_vpn_server node port =
   let rpc = (Rpc.create_tactic_request "openvpn" 
-      Rpc.CONNECT "" ["server"; (string_of_int openvpn_port)]) in
+      Rpc.CONNECT "server" [(string_of_int openvpn_port)]) in
   try
     lwt res = (Nodes.send_blocking node rpc) in 
         return (res)
@@ -74,7 +74,7 @@ let start_vpn_server node port =
 
 let start_vpn_client dst_ip dst_port node = 
   let rpc = (Rpc.create_tactic_request "openvpn" 
-      Rpc.CONNECT "" ["client"; "10.20.0.3"; (string_of_int openvpn_port)]) in
+      Rpc.CONNECT "client" ["10.20.0.3"; (string_of_int openvpn_port)]) in
   try
     lwt res = (Nodes.send_blocking node rpc) in 
         return (res)
@@ -118,14 +118,14 @@ let connect a b =
 (**********************************************************************
  * Handle tactic signature ********************************************)
 
-let handle_request action _method_name arg_list =
+let handle_request action method_name arg_list =
   let open Rpc in
   match action with
   | TEST ->
-      lwt v = (Openvpn.Manager.test arg_list) in
+      lwt v = (Openvpn.Manager.test method_name arg_list) in
       return(Sp.ResponseValue v)
   | CONNECT ->
-      lwt v = (Openvpn.Manager.connect arg_list) in
+      lwt v = (Openvpn.Manager.connect method_name arg_list) in
       return(Sp.ResponseValue v)            
   | TEARDOWN ->
       eprintf "OpenVPN hasn't implemented the teardown action\n%!";
