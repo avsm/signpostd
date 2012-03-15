@@ -15,7 +15,28 @@
  *)
 
 
-val store_addresses : Sp.name -> Sp.name -> (Sp.ip * Sp.ip) list -> unit
-val set_public_ips : Sp.name -> Sp.ip list -> unit
-val lookup : Sp.name -> Sp.name -> Sp.addressable list
+type status =
+  | IN_PROGRESS
+  | OK
+  | FAILED
+
+
+(** Find is the main entry point to the connections module.
+ *  Given the name of two endpoints it will attempt to establish
+ *  a link between them, and will immediately return with all
+ *  known existing links
+ *)
 val find : Sp.name -> Sp.name -> Sp.addressable list
+
+(** Stores the results of a tactc.
+ *  It will replace earlier results from the same tactic
+ *  if such already exist.
+ *)
+val store_addresses : Sp.name -> Sp.name -> 
+    Rpc.tactic_name -> status -> (Sp.ip * Sp.ip) list -> unit
+
+(** Stores all known public IPs for a named entity.
+ *  It should not be used to store new public IPs that result
+ *  from setting up channels using tactics
+ *)
+val set_public_ips : Sp.name -> Sp.ip list -> unit
