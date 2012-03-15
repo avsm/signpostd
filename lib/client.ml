@@ -79,7 +79,7 @@ let forward_dns_query_to_sp packet q =
   (* Normalise the domain names to lower case *)
   let dst = String.lowercase (List.hd q.DP.q_name) in
   let src = !node_name in 
-  let q_name = ([dst; src; ] @ (Re_str.split (Re_str.regexp "\.") our_domain)) in 
+  let q_name = ([dst; src; ] @ (Re_str.(split (regexp_string ".") our_domain))) in 
   let query = DP.({q_name=q_name; q_type=`A; q_class=`IN; }) in 
   let dns_q = DP.({id=1; 
     detail=(DP.build_detail DP.({qr=`Query;opcode=`Query;aa=true;tc=false;
@@ -106,7 +106,7 @@ let get_response packet q =
   bind_ns_fd ();
   let qnames = List.map String.lowercase q.q_name in
   eprintf "Q: %s\n%!" (String.concat " " qnames);
-  let domain = Re_str.split  (Re_str.regexp "\.") our_domain in 
+  let domain = Re_str.(split (regexp_string ".") our_domain) in 
   if (compareVs (List.rev qnames) (List.rev domain)) then
     forward_dns_query_to_sp packet q 
   else
