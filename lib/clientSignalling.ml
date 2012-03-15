@@ -18,6 +18,7 @@
 open Lwt
 open Printf
 open Int64
+open Rpc
 
 
 exception Tactic_error of string
@@ -31,41 +32,41 @@ let execute_tactic cmd arg_list =
   eprintf "Executing RPC '%s'.\n%!" full_command;
   let cmd = shell full_command in
   pread ~timeout:120.0 cmd >>= fun value ->
-  return value
-
-let handle_rpc rpc =
-  eprintf "ERROR: Client doesn't handle arbitrary RPCs\n%!";
-  return ()
-
-let handle_request command arg_list =
-  let args = String.concat ", " arg_list in
-  eprintf "REQUEST: %s with args %s\n%!" command args;
-  execute_tactic command arg_list >>= fun value ->
   return (Sp.ResponseValue value)
 
-let handle_notification command arg_list =
-  let args = String.concat ", " arg_list in
-  eprintf "NOTIFICATION: %s with args %s\n%!" command args;
-  execute_tactic command arg_list >>= fun _ ->
-  return ()
+let handle_request command arg_list =
+  match command with
+  | Command(command_name) -> 
+      eprintf "REQUEST %s with args %s\n%!" 
+          command_name (String.concat ", " arg_list);
+      execute_tactic command_name arg_list
+  | TacticCommand(tactic_name, action, method_name) ->
+      match Engine.tactic_by_name tactic_name with
+      | Some(t) ->
+          eprintf "REQUEST for %s with args %s\n%!" 
+              tactic_name (String.concat ", " arg_list);
+          let module Tactic = (val t : Sp.TacticSig) in
+          Tactic.handle_request action method_name arg_list
+      | None ->
+          eprintf "Client doesn't know how to handle requests for %s\n%!"
+              tactic_name;
+          return Sp.NoResponse
 
-let handle_tactic_request tactic act args =
-    try 
-    match tactic with
-    | "openvpn" ->
-        (match act with 
-            | Rpc.TEST -> 
-                    lwt v = (Openvpn.Manager.test args) in
-                        return(Sp.ResponseValue v)
-            | Rpc.CONNECT -> 
-                    lwt v = (Openvpn.Manager.connect args) in
-                        return(Sp.ResponseValue v)            
-            | _ -> raise (Tactic_error((sprintf 
-                    "not implemented %s %s" tactic 
-                    (Rpc.string_of_action act))))  )
-    | _ -> raise (Tactic_error((sprintf "not implemented %s %s" tactic
-        (Rpc.string_of_action act))))
-    with exn ->
-        printf "Exception captured in client handler %s\n%!"
-            (Printexc.to_string exn);
-        return(Sp.ResponseError("Exception captured in client handler"))
+let handle_notification command arg_list =
+  match command with
+  | Command(command_name) -> 
+      eprintf "NOTIFICATION: %s with args %s\n%!" 
+          command_name (String.concat ", " arg_list);
+      lwt _ = execute_tactic command_name arg_list in
+      return ()
+  | TacticCommand(tactic_name, action, method_name) ->
+      match Engine.tactic_by_name tactic_name with
+      | Some(t) ->
+          eprintf "NOTIFICATION for %s with args %s\n%!" 
+              tactic_name (String.concat ", " arg_list);
+          let module Tactic = (val t : Sp.TacticSig) in
+          Tactic.handle_notification action method_name arg_list
+      | None ->
+          eprintf "Client doesn't know how to handle requests for %s\n%!"
+              tactic_name;
+          return ()

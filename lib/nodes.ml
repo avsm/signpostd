@@ -130,7 +130,6 @@ let send_blocking name rpc =
   let sleeper, wakener = Lwt.task () in
   let id = match rpc with
   | Request(_, _, id) -> id 
-  | Tactic_request (_, _, _, id) -> id 
   | _ -> raise (Sp.Client_error "Invalid rpc send ")
   in
   register_sender id wakener;
@@ -146,10 +145,10 @@ let send_blocking name rpc =
   | Lwt.Fail error -> Lwt.fail error
   | Lwt.Return result -> begin
       match result with
-      | Tactic_response(_, Result r, _,_) -> return r
-      | Tactic_response(_, _, Error e, _) -> raise (Sp.Client_error e)
-      | Response(Result r, _, _) -> return r
-      | Response(_, Error e, _) -> raise (Sp.Client_error e)
+      | Response(Result r, _) -> return r
+      | Response(Error e, _) -> raise (Sp.Client_error e)
+      | _ -> 
+          raise (Sp.Client_error "Blocking send received unknsupported response")
   end
   | Lwt.Sleep -> begin
       (* The thread should not reach this case,

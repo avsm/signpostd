@@ -18,35 +18,86 @@
 open Lwt
 open Printf
 open Int64
+open Rpc
 
+let config_json =
+  let open Json in
+  Object [
+    ("user", String Config.user);
+    ("signpost_number", Int (Int64.of_int Config.signpost_number));
+    ("domain", String Config.domain);
+    ("external_ip", String Config.external_ip);
+    ("external_dns", String Config.external_dns)
+  ]
 
-let handle_rpc =
-  let open Rpc in function
-  | None ->
-      eprintf "warning: bad rpc\n%!";
+let config_datagram =
+  let open Json in
+  to_string(Object [
+    "response", (Object [
+      ("result", config_json);
+      ("error", Null);
+      ("id", Int (Int64.of_int 1))
+    ])
+   ])
+
+let handle_config_discovery = function
+  | ip :: port_str :: [] -> 
+      let port = Int64.of_int (int_of_string port_str) in
+      Printf.printf "Sending reply to %s:%Li\n%!" ip port;
+      let addr = Nodes.addr_from ip port in
+      Nodes.send_datagram config_datagram addr >>= fun len ->
       return ()
-  | Some(Hello(node, ip, port, local_ips)) -> begin
-      eprintf "rpc: hello %s -> %s:%Li\n%!" node ip port;
-      Nodes.set_signalling_channel node ip port;
-      Nodes.set_local_ips node local_ips;
-      eprintf "About to check for publicly accesible ips\n%!";
-      Nodes.check_for_publicly_accessible_ips node local_ips >>= fun public_ips -> 
-      eprintf "Got public ips... store them\n%!";
-      Connections.set_public_ips node public_ips;
-      return ()
-  end
   | _ -> 
-      eprintf "ERROR: Received an RPC that the server can't handle\n%!";
+      eprintf "Handle_config_discovery failed because of invalid RPC\n%!";
       return ()
 
-let handle_request command args =
-  eprintf "The server received a REQUEST RPC, but doesn't handle those.\n%!";
-  return Sp.NoResponse
-
-let handle_tactic_request tactic action args =
-  eprintf "The server received a REQUEST RPC, but doesn't handle those.\n%!";
-  return Sp.NoResponse
-
-let handle_notification command args =
-  eprintf "The server received a NOTIFCATION RPC, but doesn't handle those.\n%!";
+let handle_hello args =
+  let node :: ip :: str_port :: local_ips = args in
+  let port = Int64.of_int (int_of_string str_port) in
+  eprintf "rpc: hello %s -> %s:%Li\n%!" node ip port;
+  Nodes.set_signalling_channel node ip port;
+  Nodes.set_local_ips node local_ips;
+  eprintf "About to check for publicly accesible ips\n%!";
+  Nodes.check_for_publicly_accessible_ips node local_ips >>= fun public_ips -> 
+  eprintf "Got public ips... store them\n%!";
+  Connections.set_public_ips node public_ips;
   return ()
+
+let handle_request command arg_list =
+  match command with
+  | Command("config_discovery") ->
+      handle_config_discovery arg_list >> 
+      return Sp.NoResponse
+  | Command(command_name) -> 
+      eprintf "ERROR: Received a REQUEST RPC that the server can't handle
+          (%s)\n%!" command_name;
+      return Sp.NoResponse
+  | TacticCommand(tactic_name, action, method_name) ->
+      match Engine.tactic_by_name tactic_name with
+      | Some(t) ->
+          eprintf "REQUEST for %s with args %s\n%!" 
+              tactic_name (String.concat ", " arg_list);
+          let module Tactic = (val t : Sp.TacticSig) in
+          Tactic.handle_request action method_name arg_list
+      | None ->
+          eprintf "Server doesn't know how to handle requests for %s\n%!"
+              tactic_name;
+          return Sp.NoResponse
+
+let handle_notification command arg_list =
+  match command with
+  | Command("hello") -> 
+      eprintf "HELLO with args %s\n%!" 
+          (String.concat ", " arg_list);
+      handle_hello arg_list
+  | TacticCommand(tactic_name, action, method_name) ->
+      match Engine.tactic_by_name tactic_name with
+      | Some(t) ->
+          eprintf "NOTIFICATION for %s with args %s\n%!" 
+              tactic_name (String.concat ", " arg_list);
+          let module Tactic = (val t : Sp.TacticSig) in
+          Tactic.handle_notification action method_name arg_list
+      | None ->
+          eprintf "Server doesn't know how to handle requests for %s\n%!"
+              tactic_name;
+          return ()
