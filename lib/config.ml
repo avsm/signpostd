@@ -15,27 +15,20 @@
  *)
 
 
-(* let user = "avsm" *)
-(* let signpost_number = 1 *)
-(* let domain = "signpo.st" *)
-(* let ip_slash_24 = "172.16.11." *)
-(* let external_ip = "50.19.186.111" *)
-(* let external_dns = "ec2-50-19-186-111.compute-1.amazonaws.com" *)
-
 let user = "sebastian"
 let signpost_number = 2
 let domain = "signpo.st"
 let ip_slash_24 = "172.16.11."
-let external_ip = "107.20.47.111"
+(* This is the ip of the local test machine *)
+let external_ip = "192.168.56.101"
 let external_dns = "ec2-107-20-47-111.compute-1.amazonaws.com"
 let dir = "/home/cr409/scratch/code/signpostd/"
 
 let iodine_node_ip = "172.16.11.1"
 let ns_server="8.8.8.8"
 (* for testing *)
-(* let iodine_node_ip = "127.0.0.1" *)
 
 let signal_port = 3456
 
 (* RPCs timeout after 5 minutes *)
-let rpc_timeout = 5 * 60
+let rpc_timeout = 5 * 6

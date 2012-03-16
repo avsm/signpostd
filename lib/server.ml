@@ -37,7 +37,7 @@ let nxdomain =
 (* Ip address response for a node *)
 let ip_resp ~dst ~src ~domain =
   let open Dns.Packet in
-  let addressables = Connections.find src dst in
+  let addressables = Engine.find src dst in
   let ip_addressables = List.filter (function
     | (Sp.IPAddressInstance(ip)) -> true
     | _ -> false) addressables in

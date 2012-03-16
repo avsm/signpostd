@@ -16,6 +16,7 @@
 
 
 exception Client_error of string
+exception InvalidState of string
 
 
 type name = string
