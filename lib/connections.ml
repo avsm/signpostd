@@ -89,48 +89,50 @@ let get_first_of_addresses results =
 let get_second_of_addresses results =
   get_address (fun (_, addr) -> addr) results
 
+let string_of_status = function
+  | OK -> "OK"
+  | FAILED -> "FAILED"
+  | IN_PROGRESS -> "IN_PROGRESS"
+
+let construct_key a b =
+  match in_order a b with
+  | true -> name_to_db_name (a,b)
+  | false -> name_to_db_name (b,a)
+
+let rec dedupe_list = function
+  | [] -> []
+  | a::b -> begin
+     match List.mem a b with
+     | true -> dedupe_list b
+     | false -> a :: (dedupe_list b)
+  end
+
+(**********************************************************************
+ * Public API *********************************************************)
+
 let lookup a_name b_name =
   eprintf "Looking up connections from %s to %s\n%!" a_name b_name;
-  let a = Name a_name in
-  let b = Name b_name in
-  let tunnels = match in_order a b with
-  | true -> begin
-      let tactic_result_list = get (a,b) in
-      get_second_of_addresses tactic_result_list
-  end
-  | false -> begin
-      let tactic_result_list = get (b,a) in
-      get_first_of_addresses tactic_result_list
-  end in
+  let key = construct_key a_name b_name in
+  let tactic_result_list = get key in
+  let tunnels = match in_order a_name b_name with
+  | true -> get_second_of_addresses tactic_result_list
+  | false -> get_first_of_addresses tactic_result_list in
   let direct_connection = 
-    let tactic_result_list = get (Wildcard, b) in
+    let tactic_result_list = get (Wildcard, Name(b_name)) in
     get_second_of_addresses tactic_result_list in
   let connections = direct_connection @ tunnels in
   let filtered = List.filter (function
     | NoAddress -> false
     | _ -> true) connections in
-  List.map (fun (Address(a)) -> a) filtered
-
-(**********************************************************************
- * Public API *********************************************************)
-
-let find a b =
-  eprintf "Finding existing connections between %s and %s\n" a b;
-  eprintf "Trying to establish new ones\n";
-  Engine.connect a b;
-  lookup a b
+  dedupe_list(List.map (fun (Address(a)) -> a) filtered)
 
 let store_addresses a b tactic_name status ip_pair_list =
-  let (key, value) = match in_order a b with
-    | true -> 
-        let key = name_to_db_name (a,b) in
-        let addr = ip_pair_list_to_address_list ip_pair_list in
-        (key, addr)
-    | false -> 
-        let key = name_to_db_name (b,a) in
-        let addr = flip_addresses 
-            (ip_pair_list_to_address_list ip_pair_list) in
-        (key, addr) in
+  eprintf "Storing addresses between %s and %s for tactic %s (Status: %s)\n%!" a
+      b tactic_name (string_of_status status);
+  let key = construct_key a b in
+  let value = match in_order a b with
+    | true -> ip_pair_list_to_address_list ip_pair_list
+    | false -> flip_addresses (ip_pair_list_to_address_list ip_pair_list) in
   update_for_tactic tactic_name status key value
 
 let set_public_ips a ips =
@@ -139,3 +141,10 @@ let set_public_ips a ips =
   let key = (Wildcard, Name(a)) in
   let addrs = List.map (fun ip -> (NoAddress, Address(Sp.IPAddressInstance(ip)))) ips in
   update_for_tactic "public_ips" OK key addrs
+
+let get_tactic_status_for a b tactic_name =
+  let key = construct_key a b in
+  let result = get key in
+  let find_fn = (fun (Result(name, _, _)) -> name = tactic_name) in
+  let Result(_, status, _) = List.find find_fn result in
+  status
