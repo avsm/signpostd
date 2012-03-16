@@ -20,7 +20,7 @@ open Printf
 open Int64
 
 
-let name () = "Direct connection"
+let name () = "direct_connection"
 
 (* ******************************************
  * Try to establish if a direct connection between two hosts is possible
@@ -32,6 +32,14 @@ let list_of_ips_from_string ip_str =
   let on_whitespace = regexp " " in
   let chomped_str = global_replace remove_character_return "" ip_str in
   split on_whitespace chomped_str
+
+let rec join_ip_lists a_ips b_ips =
+  match (a_ips, b_ips) with
+  | [], _ -> []
+  | _, [] -> []
+  | a::aas, b::[] -> (a,b) :: (join_ip_lists aas [b])
+  | a::[], b::bs -> (a,b) :: (join_ip_lists [a] bs)
+  | a::aas, b::bs -> (a,b) :: (join_ip_lists aas bs)
 
 let connect a b =
   (* Returns the pairs of lists of ips of node a and b that seem *)
@@ -55,14 +63,28 @@ let connect a b =
           (a, node_a_listen, node_b_listen, ips_b); 
           (b, node_b_listen, node_a_listen, ips_a)
         ] in
-      eprintf "A could connect to: %s\n%!" (String.concat ", " success_a);
-      eprintf "B could connect to: %s\n%!" (String.concat ", " success_b);
-      return []
-
+      let ips = join_ip_lists success_a success_b in
+      return ips
     (* If we cannot find the signalling channel of one of the nodes, then we
      * cannot either find what IP ranges they have in common.
      * We therefore return that they share no ips *)
     with Not_found -> return [] in
+  let tactic_name = name () in
+  let store_progress = Connections.store_addresses a b (name ()) in
+  store_progress Connections.IN_PROGRESS [];
+  lwt results = connectable_ips () in
+  (match results with
+    | [] -> store_progress Connections.FAILED []
+    | _ -> store_progress Connections.OK results);
+  return ()
 
-    connectable_ips () >>= fun [] ->
-    return ()
+(**********************************************************************
+ * Handle tactic signature ********************************************)
+
+let handle_request action method_name arg_list =
+  eprintf "Direct Connection tactic doesn't implement tactic requests\n%!";
+  return(Sp.ResponseError "DirectConnection doesn't support tactic requests")
+
+let handle_notification action method_name arg_list =
+  eprintf "Direct Connection tactic doesn't handle notifications\n%!";
+  return ()
