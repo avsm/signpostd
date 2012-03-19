@@ -7,9 +7,9 @@ if [ ! -e "${d}/PASSWD" ]; then
   exit 1
 fi
 
-IP_RANGE=`cat lib/config.ml | grep ip_slash_24 | awk '{print $4}' | sed 's/"//g'`
-NUM=`cat lib/config.ml | grep signpost_number | awk '{print $4}'`
-DOMAIN=`cat lib/config.ml | grep domain | awk '{print $4}' | sed 's/"//g'`
+IP_RANGE=`cat lib/config.ml | grep ip_slash_24 |  tail -1 | awk '{print $4}' | sed 's/"//g'`
+NUM=`cat lib/config.ml | grep signpost_number |  tail -1 | awk '{print $4}'`
+DOMAIN=`cat lib/config.ml | grep domain | tail -1 | awk '{print $4}' | sed 's/"//g'`
 
 cd ${d}
 PASS=`cat PASSWD`
