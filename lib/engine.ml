@@ -20,8 +20,9 @@ open Printf
 
 
 let tactics = [
-    (module DirectConnection : Sp.TacticSig)
-    (* (module OpenvpnConnection : Sp.TacticSig) *)
+  (module DirectConnection : Sp.TacticSig);
+  (module OpenvpnConnection : Sp.TacticSig);
+  (module PrivoxyConnection : Sp.TacticSig);
   ]
 
 let tactics_not_attempted_or_failed_for a b =
@@ -48,14 +49,27 @@ let connect a b =
   eprintf "Engine is trying to connect %s and %s\n" a b;
   iter_over_tactics a b
 
+let connect_using_tactic tactic a b = 
+  let open List in
+  Printf.eprintf "using tactic %s to connect %s %s\n%!" tactic a b; 
+  try_lwt
+    lwt t = Lwt_list.find_s ( fun t -> 
+    let module Tactic = (val t : Sp.TacticSig) in
+      return ( (String.compare tactic (Tactic.name ())) == 0)
+    ) tactics in 
+    let module Tactic = (val t : Sp.TacticSig) in
+      Tactic.connect a b 
+  with Not_found ->
+    return (Printf.eprintf "cannot find tactic %s\n%!" tactic)
+
 let tactic_by_name name =
   try 
     let tactic = List.find (fun t -> 
-        let module Tactic = (val t : Sp.TacticSig) in
-        Tactic.name () = name) tactics in
-    Some(tactic)
-  with Not_found ->
-    None
+      let module Tactic = (val t : Sp.TacticSig) in
+      Tactic.name () = name) tactics in
+      Some(tactic)
+    with Not_found ->
+      None
 
 let find a b =
   eprintf "Finding existing connections between %s and %s\n" a b;

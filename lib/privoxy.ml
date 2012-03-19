@@ -1,5 +1,6 @@
 (*
- * Copyright (c) 2012 Sebastian Probst Eide <sebastian.probst.eide@gmail.com>
+ * Copyright (c) 2012 Charalampos Rotsos <cr409@cl.cam.ac.uk>
+ *
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -15,12 +16,37 @@
  *)
 
 
-(** Find is the main entry point to the connections module.
- *  Given the name of two endpoints it will attempt to establish
- *  a link between them, and will immediately return with all
- *  known existing links
- *)
-val find : Sp.name -> Sp.name -> Sp.addressable list
+open Lwt
+open Lwt_unix
+open Lwt_list
 
-val tactic_by_name : Rpc.tactic_name -> (module Sp.TacticSig) option
-val connect_using_tactic : string -> string -> string -> unit Lwt.t
+
+module Manager = struct
+  exception OpenVpnError of string
+  exception MissingOpenVPNArgumentError
+
+  type conn_type = {
+    ip: string option;
+    port: int;
+    pid: int;
+  }
+
+  type conn_db_type = {
+    conns : (int, conn_type) Hashtbl.t;
+    mutable max_id : int;
+    mutable can: unit Lwt.t option;
+    mutable fd: file_descr option;
+  }
+
+  let conn_db = {conns=(Hashtbl.create 0); max_id=0; can=None;fd=None;}
+
+  let test kind args =
+    return ("OK")
+  
+  let connect kind args =
+    return (["OK"])
+
+  let teardown args =
+    true
+
+end
