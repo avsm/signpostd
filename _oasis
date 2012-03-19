@@ -29,3 +29,12 @@ Executable client
   CompiledObject:     best
   Install:            false
   BuildDepends:       signpost, dns, dns.server
+
+Executable send_cmd
+  Path:               lib
+  MainIs:             remoteControl.ml
+  Custom:             true
+  CompiledObject:     best
+  Install:            false
+  BuildDepends:       signpost
+
