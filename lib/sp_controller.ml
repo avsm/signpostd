@@ -32,24 +32,31 @@ type mac_switch = {
   switch: OP.datapath_id;
 }
 
+type pkt_in_cb_struct = {
+  flow_match : OP.Match.t;
+  cb: (state -> OP.datapath_id -> (OP.Port.t * int32 * Bitstring.t * OP.datapath_id) -> unit Lwt.t);
+}
+
 type switch_state = {
 (*   mutable mac_cache: (mac_switch, OP.Port.t) Hashtbl.t; *)
   mutable mac_cache: (OP.eaddr, OP.Port.t) Hashtbl.t; 
   mutable dpid: OP.datapath_id list;
-  mutable of_ctrl: OC.state list; 
+  mutable of_ctrl: OC.state list;
+  mutable pkt_in_cb_cache : pkt_in_cb_struct list;
 }
 
-
 let resolve t = Lwt.on_success t (fun _ -> ())
-
 let pp = Printf.printf
-
 let sp = Printf.sprintf
 
 let switch_data = { mac_cache = Hashtbl.create 0;
                     dpid = []; 
                     of_ctrl = [];
+                    pkt_in_cb_cache = [];
                   } 
+
+let register_pkt_in_cb flow_match cb = 
+  ()
 
 let datapath_join_cb controller dpid evt =
   let dp = 
@@ -104,21 +111,6 @@ incr req_count;
         let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
           OC.send_of_data controller dpid bs
       )
-
-(*let memory_debug () = 
-   while_lwt true do
-     (OS.Time.sleep 1.0)  >> 
-     return (OC.mem_dbg "memory usage")
-   done *)
-
-(*let terminate_controller controller =
-  while_lwt true do
-    (OS.Time.sleep 60.0)  >>
-    exit(1) *)
-(*    return (List.iter (fun ctrl -> Printf.printf "terminating\n%!";
- *    (OC.terminate ctrl))  *)
-(*  switch_data.of_ctrl)  *)
-(*   done *)
 
 let init controller = 
   if (not (List.mem controller switch_data.of_ctrl)) then
