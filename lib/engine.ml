@@ -20,9 +20,10 @@ open Printf
 
 
 let tactics = [
-  (module DirectConnection : Sp.TacticSig);
+(*  (module DirectConnection : Sp.TacticSig);
   (module OpenvpnConnection : Sp.TacticSig);
-  (module PrivoxyConnection : Sp.TacticSig);
+  (module PrivoxyConnection : Sp.TacticSig); *)
+  (module SshConnection : Sp.TacticSig);
   ]
 
 let tactics_not_attempted_or_failed_for a b =
