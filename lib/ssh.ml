@@ -39,7 +39,8 @@ module Manager = struct
     mutable server_pid: int option;
   }
 
-  let conn_db = {conns=(Hashtbl.create 0); max_id=0; can=None;fd=None;}
+  let conn_db = {conns_server=[]; conns_client=[];
+                 max_dev_id=0; server_pid=None;}
 
 
   (* start the sshd server *)
@@ -59,8 +60,8 @@ module Manager = struct
               Printf.printf "process created with pid %s...\n" (String.sub buf 0
                                                                   len);
               conn_db.server_pid <- Some(int_of_string (String.sub buf 0 (len-1)));
-              Printf.printf "process created with pid %d...\n" pid;
-              return ("OK")
+              Printf.printf "process created with pid %s...\n" (String.sub buf 0 (len-1));
+              return("OK")
       | Some(_) -> 
           Printf.printf "ssh server already started...\n%!";
           return("OK")
@@ -68,15 +69,15 @@ module Manager = struct
   let run_client port ips =
     let send_pkt_to port ip = 
       let buf = String.create 1500 in
-      let sock = Lwt_unix.socket Lwt_unix.PF_INET Lwt_unix.SOCK_STREAM
-                 (Unix.getprotobyname "tcp").Unix.p_proto in        
+      let sock = (Lwt_unix.socket Lwt_unix.PF_INET Lwt_unix.SOCK_STREAM
+                 ((Unix.getprotobyname "tcp").Unix.p_proto)) in        
       let ipaddr = (Unix.gethostbyname ip).Unix.h_addr_list.(0) in
       let portaddr = Unix.ADDR_INET (ipaddr, port) in
-      lwt _ = Lwt_unix.connect sock Unix.ADDR_INET (ipaddr, port) in 
-      lwt len = Lwt_unix.recv socket buf 0 1500 [] in 
+      lwt _ = Lwt_unix.connect sock (Unix.ADDR_INET (ipaddr, port)) in 
+      lwt len = Lwt_unix.recv sock buf 0 1500 [] in 
         Printf.printf "Received (%s) from ipaddr %s\n%!" (String.sub buf 0 len);
         lwt _ = Lwt_unix.close sock in
-        return ip
+        return true
     in
     (* Need a parallel find *)
     Lwt_list.find_s (send_pkt_to port) ips
@@ -87,7 +88,7 @@ module Manager = struct
       (* start udp server *)
       | "server_start" -> (
           Printf.printf "starting server...\n%!";
-          run_server () 
+          run_server ()) 
 
       (* code to send udp packets to the destination*)
       | "client" -> (
