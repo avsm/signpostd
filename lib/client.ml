@@ -59,7 +59,7 @@ let forward_dns_query_to_ns packet q =
   let open Dns.Packet in
   let module DQ = Dns.Query in
   (* Normalise the domain names to lower case *)
-  let data = Bitstring.string_of_bitstring (marshal packet) in
+  let data = Bitstring.string_of_bitstring (marshal_dns packet) in
   let dst = Lwt_unix.ADDR_INET((Unix.inet_addr_of_string Config.ns_server), 53) in
   lwt _ = Lwt_unix.sendto ns_fd data 0 (String.length data) [] dst in
   let buf = (String.create 1500) in 
@@ -81,11 +81,11 @@ let forward_dns_query_to_sp packet q =
   let src = !node_name in 
   let q_name = ([dst; src; ] @ (Re_str.(split (regexp_string ".") our_domain))) in 
   let query = DP.({q_name=q_name; q_type=`A; q_class=`IN; }) in 
-  let dns_q = DP.({id=1; 
+  let dns_q = DP.({id=(Dns.Wire.int16 1); 
     detail=(DP.build_detail DP.({qr=`Query;opcode=`Query;aa=true;tc=false;
     rd=false;ra=false;rcode=`NoError})); questions=[query];answers=[];
     authorities=[];additionals=[];}) in
-  let data = Bitstring.string_of_bitstring (DP.marshal dns_q) in
+  let data = Bitstring.string_of_bitstring (DP.marshal_dns dns_q) in
   let dst = Lwt_unix.ADDR_INET((Unix.inet_addr_of_string Config.iodine_node_ip), 53) in
   lwt _ = Lwt_unix.sendto ns_fd data 0 (String.length data) [] dst in
   let buf = (String.create 1500) in 
