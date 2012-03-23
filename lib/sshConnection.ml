@@ -107,8 +107,8 @@ let handle_request action method_name arg_list =
   let open Rpc in
   match action with
   | TEST ->
-      eprintf "Ssh doesn't support test action\n%!";
-      return(Sp.ResponseError "Ssh test is not supported yet")
+      lwt ip = Ssh.Manager.test method_name arg_list in
+        return(Sp.ResponseError ip)
   | CONNECT ->
       eprintf "Ssh doesn't support conect action\n%!";
       return(Sp.ResponseError "Ssh connect is not supported yet")            
