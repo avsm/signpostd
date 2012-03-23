@@ -26,12 +26,14 @@ exception Ssh_error
 let name () = "ssh"
 let ssh_port = 10000
 
+
 let pairwise_connection_test a b = 
-  try 
+  try
+    Printf.printf "Trying to start ssh service...\n%!";
 (*   let (dst_ip, dst_port) = Nodes.signalling_channel a in *)
   let rpc = (Rpc.create_tactic_request "ssh" Rpc.TEST "server_start" []) in
   lwt res = (Nodes.send_blocking a rpc) in
-  Printf.printf "ssh server started at %s\n%!" a;
+  Printf.printf "ssh server started at %s\n%!" b;
 
   let ips = Nodes.get_local_ips a in 
   let rpc = (Rpc.create_tactic_request "ssh" 
@@ -44,9 +46,19 @@ let pairwise_connection_test a b =
     (Printexc.to_string exn) (Printexc.get_backtrace ());
     return (false, "")
 
- let start_vpn_server node port =
-  let rpc = (Rpc.create_tactic_request "openvpn" 
-      Rpc.CONNECT "server" [(string_of_int ssh_port)]) in
+ let start_ssh_server node port client_name = 
+  let rpc = (Rpc.create_tactic_request "ssh" 
+    Rpc.CONNECT "server" [client_name;]) in
+  try
+    lwt res = (Nodes.send_blocking node rpc) in 
+    return (res)
+  with exn -> 
+    Printf.printf "Failed to start openvpn server on node %s\n%!" node;
+    raise Ssh_error
+
+let start_ssh_client dst_ip dst_port node = 
+  let rpc = (Rpc.create_tactic_request "ssh" 
+  Rpc.CONNECT "client" [dst_ip; (string_of_int ssh_port); node]) in
   try
     lwt res = (Nodes.send_blocking node rpc) in 
         return (res)
@@ -54,21 +66,11 @@ let pairwise_connection_test a b =
     Printf.printf "Failed to start openvpn server on node %s\n%!" node;
     raise Ssh_error
 
-let start_vpn_client dst_ip dst_port node = 
-  let rpc = (Rpc.create_tactic_request "openvpn" 
-      Rpc.CONNECT "client" ["10.20.0.3"; (string_of_int ssh_port)]) in
-  try
-    lwt res = (Nodes.send_blocking node rpc) in 
-        return (res)
-  with exn -> 
-    Printf.printf "Failed to start openvpn server on node %s\n%!" node;
-    raise Ssh_error
-
-let init_openvpn a b = 
+let init_ssh a b = 
   (* Init server on b *)
-    lwt b_ip = start_vpn_server b ssh_port in
+    lwt b_ip = start_ssh_server b ssh_port a in
   (*Init client on b and get ip *)
-    lwt a_ip = start_vpn_client (Nodes.get_local_ips b) ssh_port a in
+    lwt a_ip = start_ssh_client (List.hd (Nodes.get_local_ips b)) ssh_port b in
   return (a_ip, b_ip)
 
 let start_local_server () =
@@ -77,25 +79,23 @@ let start_local_server () =
   return ()
 
 let connect a b =
-  eprintf "Requesting the nodes ip addresses\n";
   (* Trying to see if connectivity is possible *)
+  eprintf "ssh connection %s -> %s...\n%!" a b;
     lwt (succ, ip) = pairwise_connection_test a b in
     if succ then
-(*       lwt (a_ip, b_ip) = init_openvpn a b in  *)
+       lwt (a_ip, b_ip) = init_ssh a b in 
         return ()
     else
       (* try the reverse direction *)
       lwt (succ, ip) = pairwise_connection_test b a  in
       if succ then
-(*         lwt (b_ip, a_ip) = init_openvpn b a in *)
+         lwt (b_ip, a_ip) = init_ssh b a in 
             return ()
       else
-        lwt _ = start_local_server () in
+(*         lwt _ = start_local_server () in *)
         let ip = Config.external_ip in
-(*
         lwt [a_ip; b_ip] = (Lwt_list.map_p 
-            (start_vpn_client ip ssh_port) [a; b]) in
- *)
+            (start_ssh_client ip ssh_port ) [a; b]) in
             return ()
         
      
@@ -121,6 +121,8 @@ let handle_notification action method_name arg_list =
   return ()
 
 
+(*
 let connect a b =
   Printf.eprintf "[privoxy] connecting %s -> %s" a b; 
   return ()
+*)
