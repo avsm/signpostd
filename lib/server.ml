@@ -14,12 +14,12 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-
+open Dns
 open Lwt 
 open Printf
 open Int64
 open Sp_controller
-
+open Key
 
 (* The domain we are authoritative for *)
 let our_domain =
@@ -83,8 +83,35 @@ let dnsfn ~src ~dst packet =
   |[q] -> return (Some (get_response packet q))
   |_ -> eprintf "dns dns query: multiple questions\n%!"; return None
 
+let load_dnskey_rr () = 
+  let ret = ref "" in 
+  let dir = (Unix.opendir (Config.conf_dir ^ "/authorized_keys/")) in
+  let rec read_pub_key dir =  
+  try 
+    let file = Unix.readdir dir in
+    if ( Re_str.string_match (Re_str.regexp ".*\\.pub") file 0) then (
+      lwt dnskey_rr = dnskey_of_pem_pub_file 
+      (Config.conf_dir ^ "/authorized_keys/" ^ file) in
+      let hostname = (List.nth (Re_str.split (Re_str.regexp "\\.") file) 0) in 
+      match dnskey_rr with
+      | Some(value) -> 
+        Printf.printf "file : %s \n %s \n%!" hostname (List.hd value);
+        ret := (!ret) ^ "\n" ^ 
+        (Printf.sprintf "%s IN %s\n" hostname (List.hd value));
+        read_pub_key dir
+      | None -> read_pub_key dir
+     ) else (
+       read_pub_key dir
+     )
+  with End_of_file -> 
+    Unix.closedir dir;
+    return (!ret)
+  in 
+  read_pub_key dir
+
 let dns_t () =
   lwt fd, src = Dns_server.bind_fd ~address:"0.0.0.0" ~port:5354 in
+  lwt dns_keys = load_dnskey_rr () in 
   let zonebuf = sprintf "
 $ORIGIN %s. ;
 $TTL 0
@@ -99,7 +126,8 @@ $TTL 0
 
 @ A %s
 i NS %s.
-" our_domain Config.external_ip our_domain Config.external_ip Config.external_dns in
+%s" our_domain Config.external_ip our_domain Config.external_ip 
+   Config.external_dns dns_keys in
   eprintf "%s\n%!" zonebuf;
   Dns.Zone.load_zone [] zonebuf;
   Dns_server.listen ~fd ~src ~dnsfn
