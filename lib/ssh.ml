@@ -91,12 +91,13 @@ module Manager = struct
       close_out file
 
   let server_add_client domain = 
-      Printf.printf "Addinh new permitted key from domain %s\n%!" domain;
+      Printf.printf "Adding new permitted key from domain %s\n%!" domain;
       lwt _ = 
           if(Hashtbl.mem conn_db.conns_client domain) then (
             return ()
           ) else (
-              lwt key = Key.ssh_pub_key_of_domain domain in
+              lwt key = Key.ssh_pub_key_of_domain ~server:(Config.iodine_node_ip) 
+                          ~port:5354 domain in
               match key with 
               | Some(key) -> 
                 Hashtbl.add conn_db.conns_client domain (List.hd key);
@@ -106,7 +107,7 @@ module Manager = struct
           )
       in
 
-      return (["OK"])
+      return ("OK")
 
 
   let test kind args =
@@ -131,10 +132,11 @@ module Manager = struct
   let connect kind args =
       match kind with
       | "server" ->
+        Printf.printf "Setting up the ssh daemon...\n%!";
         server_add_client (List.hd args)
       | _ -> 
-      Printf.eprintf "Invalid connect kind %s\n%!" kind;
-      raise (SshError "Invalid connect kind")
+        Printf.eprintf "Invalid connect kind %s\n%!" kind;
+        raise (SshError "Invalid connect kind")
 
 
   let teardown args =

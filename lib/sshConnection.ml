@@ -110,8 +110,11 @@ let handle_request action method_name arg_list =
       lwt ip = Ssh.Manager.test method_name arg_list in
         return(Sp.ResponseValue ip)
   | CONNECT ->
-      eprintf "Ssh doesn't support conect action\n%!";
-      return(Sp.ResponseError "Ssh connect is not supported yet")            
+      (try 
+        lwt ip = Ssh.Manager.connect method_name arg_list in
+        return(Sp.ResponseValue ip)            
+      with e -> 
+        return (Sp.ResponseError "ssh_connect"))
   | TEARDOWN ->
       eprintf "Ssh doesn't support teardown action\n%!";
       return(Sp.ResponseError "Ssh teardown is not supported yet")
