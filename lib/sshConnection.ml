@@ -108,7 +108,7 @@ let handle_request action method_name arg_list =
   match action with
   | TEST ->
       lwt ip = Ssh.Manager.test method_name arg_list in
-        return(Sp.ResponseError ip)
+        return(Sp.ResponseValue ip)
   | CONNECT ->
       eprintf "Ssh doesn't support conect action\n%!";
       return(Sp.ResponseError "Ssh connect is not supported yet")            

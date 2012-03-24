@@ -32,14 +32,15 @@ module Manager = struct
   }
 
   type conn_db_type = {
-    conns_server: conn_type list;
-    conns_client: conn_type list;
+    conns_server: (string, string) Hashtbl.t;
+    conns_client: (string, string) Hashtbl.t;
     mutable max_dev_id : int;
 (*     mutable can: unit Lwt.t option; *)
     mutable server_pid: int option;
   }
 
-  let conn_db = {conns_server=[]; conns_client=[];
+  let conn_db = {conns_server=(Hashtbl.create 32); conns_client=(Hashtbl.create
+  32);
                  max_dev_id=0; server_pid=None;}
 
 
@@ -82,6 +83,31 @@ module Manager = struct
     (* Need a parallel find *)
     Lwt_list.find_s (send_pkt_to port) ips
 
+  let update_authorized_keys () = 
+      let file = open_out "/root/.ssh/signpost_tunnel" in 
+      Hashtbl.iter (fun domain key -> 
+          output_string file (key ^ "\n") 
+      ) conn_db.conns_client; 
+      close_out file
+
+  let server_add_client domain = 
+      Printf.printf "Addinh new permitted key from domain %s\n%!" domain;
+      lwt _ = 
+          if(Hashtbl.mem conn_db.conns_client domain) then (
+            return ()
+          ) else (
+              lwt key = Key.ssh_pub_key_of_domain domain in
+              match key with 
+              | Some(key) -> 
+                Hashtbl.add conn_db.conns_client domain (List.hd key);
+                return (update_authorized_keys ())
+              | None ->
+                return (Printf.printf "Couldn't find a valid dnskey record\n%!")
+          )
+      in
+
+      return (["OK"])
+
 
   let test kind args =
     match kind with
@@ -103,7 +129,13 @@ module Manager = struct
         return ("OK"))
   
   let connect kind args =
-    return (["OK"])
+      match kind with
+      | "server" ->
+        server_add_client (List.hd args)
+      | _ -> 
+      Printf.eprintf "Invalid connect kind %s\n%!" kind;
+      raise (SshError "Invalid connect kind")
+
 
   let teardown args =
     true
