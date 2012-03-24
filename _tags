@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 171b3b31102ea771fd1b0d2e9cd2f716)
+# DO NOT EDIT (digest: 82445f931b038cccac1853a1b55f420d)
 # Library signpost
 "lib": include
 # Executable server
@@ -14,6 +14,7 @@
 <lib/server.{native,byte}>: pkg_lwt
 <lib/server.{native,byte}>: pkg_dns.server
 <lib/server.{native,byte}>: pkg_dns
+<lib/server.{native,byte}>: pkg_crypto_keys
 <lib/*.ml{,i}>: pkg_ocamlgraph
 <lib/server.{native,byte}>: custom
 # Executable send_cmd
@@ -25,6 +26,7 @@
 <lib/remoteControl.{native,byte}>: pkg_lwt.unix
 <lib/remoteControl.{native,byte}>: pkg_lwt.syntax
 <lib/remoteControl.{native,byte}>: pkg_lwt
+<lib/remoteControl.{native,byte}>: pkg_crypto_keys
 <lib/remoteControl.{native,byte}>: custom
 # Executable client
 <lib/client.{native,byte}>: use_signpost
@@ -37,6 +39,7 @@
 <lib/client.{native,byte}>: pkg_lwt
 <lib/client.{native,byte}>: pkg_dns.server
 <lib/client.{native,byte}>: pkg_dns
+<lib/client.{native,byte}>: pkg_crypto_keys
 <lib/*.ml{,i}>: use_signpost
 <lib/*.ml{,i}>: pkg_uri
 <lib/*.ml{,i}>: pkg_re.str
@@ -47,6 +50,7 @@
 <lib/*.ml{,i}>: pkg_lwt
 <lib/*.ml{,i}>: pkg_dns.server
 <lib/*.ml{,i}>: pkg_dns
+<lib/*.ml{,i}>: pkg_crypto_keys
 <lib/client.{native,byte}>: custom
 # OASIS_STOP
 <lib/*.ml{,i}>: syntax_camlp4o
