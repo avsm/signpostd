@@ -69,19 +69,28 @@ module Manager = struct
 
   let run_client port ips =
     let send_pkt_to port ip = 
-      let buf = String.create 1500 in
+      let buf = String.create 20 in
       let sock = (Lwt_unix.socket Lwt_unix.PF_INET Lwt_unix.SOCK_STREAM
                  ((Unix.getprotobyname "tcp").Unix.p_proto)) in        
       let ipaddr = (Unix.gethostbyname ip).Unix.h_addr_list.(0) in
       let portaddr = Unix.ADDR_INET (ipaddr, port) in
       lwt _ = Lwt_unix.connect sock (Unix.ADDR_INET (ipaddr, port)) in 
-      lwt len = Lwt_unix.recv sock buf 0 1500 [] in 
-        Printf.printf "Received (%s) from ipaddr %s\n%!" (String.sub buf 0 len);
-        lwt _ = Lwt_unix.close sock in
+      Printf.printf "trying to connect to %s:%d\n%!" ip port;
+(*
+      lwt len = Lwt_unix.recv sock buf 0 20 [] in  
+         Printf.printf "Received (%s) from ipaddr %s\n%!" (String.sub buf 0
+         len);
+ *)
+        Lwt_unix.close sock;
         return true
     in
     (* Need a parallel find *)
-    Lwt_list.find_s (send_pkt_to port) ips
+    let ret = ref "" in 
+    lwt _ = Lwt.choose (List.map (fun ip -> 
+                          lwt _ = send_pkt_to port ip in
+                          ret := ip;
+                          return ()) ips) in 
+    return (!ret)
 
   let update_authorized_keys () = 
       let file = open_out "/root/.ssh/signpost_tunnel" in 
@@ -106,6 +115,9 @@ module Manager = struct
                 return (Printf.printf "Couldn't find a valid dnskey record\n%!")
           )
       in
+      (* Create tap device to connect to *)
+
+    (* Setup an ip address for the new device and return the new ip address *)
 
       return ("OK")
 
@@ -122,18 +134,32 @@ module Manager = struct
           let port :: ips = args in 
             Printf.printf "starting client.. %s\n" port;
             lwt ip = run_client ssh_port ips in
-            (Printf.printf "Received a reply from ip %s \n%!" ip);
+        (Printf.printf "Received a reply from ip %s \n%!" ip);
             return (ip))
 
       | _ -> (
         Printf.printf "Action %s not supported in test" kind;
         return ("OK"))
-  
+
+  let setup_dev () =
+    conn_db.max_dev_id <- conn_db.max_dev_id + 1;
+    lwt _ = Lwt_unix.system 
+              (Printf.sprintf "tunctl -t tap%d" conn_db.max_dev_id) in
+    lwt _ = Lwt_unix.system 
+              (Printf.sprintf "ifconfig tap%d up" conn_db.max_dev_id) in
+    lwt _ = Lwt_unix.system 
+              (Printf.sprintf 
+                 "ifconfig tap%d 10.2.%d.1" conn_db.max_dev_id
+              conn_db.max_dev_id) in
+                return (Printf.sprintf "10.2.%d.1" conn_db.max_dev_id)
+
+
   let connect kind args =
       match kind with
       | "server" ->
         Printf.printf "Setting up the ssh daemon...\n%!";
-        server_add_client (List.hd args)
+        server_add_client (List.hd args);
+        setup_dev ()
       | _ -> 
         Printf.eprintf "Invalid connect kind %s\n%!" kind;
         raise (SshError "Invalid connect kind")
