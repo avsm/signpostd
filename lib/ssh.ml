@@ -31,16 +31,27 @@ module Manager = struct
     key: string;
   }
 
+  type conn_det = {
+      domain: string;
+      dev_id: int;
+  }
+
+  type server_det = {
+      ip : string;
+      key : string;
+  }
+
   type conn_db_type = {
-    conns_server: (string, string) Hashtbl.t;
+    conns_server: (string, server_det) Hashtbl.t;
     conns_client: (string, string) Hashtbl.t;
+    mutable conns_cache: conn_det list;
     mutable max_dev_id : int;
 (*     mutable can: unit Lwt.t option; *)
     mutable server_pid: int option;
   }
 
-  let conn_db = {conns_server=(Hashtbl.create 32); conns_client=(Hashtbl.create
-  32);
+  let conn_db = {conns_server=(Hashtbl.create 32); 
+  conns_client=(Hashtbl.create 32); conns_cache=[];
                  max_dev_id=0; server_pid=None;}
 
 
@@ -99,6 +110,13 @@ module Manager = struct
       ) conn_db.conns_client; 
       close_out file
 
+  let update_known_hosts () = 
+      let file = open_out (Config.conf_dir ^ "/known_hosts") in 
+      Hashtbl.iter (fun domain key -> 
+          output_string file (key.ip ^ " " ^ key.key ^ "\n") 
+      ) conn_db.conns_server; 
+      close_out file
+
   let server_add_client domain = 
       Printf.printf "Adding new permitted key from domain %s\n%!" domain;
       lwt _ = 
@@ -115,12 +133,35 @@ module Manager = struct
                 return (Printf.printf "Couldn't find a valid dnskey record\n%!")
           )
       in
-      (* Create tap device to connect to *)
-
-    (* Setup an ip address for the new device and return the new ip address *)
-
       return ("OK")
 
+  let client_add_server domain ip = 
+      Printf.printf "Adding new server fingerprint from domain %s\n%!" domain;
+      lwt _ = 
+          if(Hashtbl.mem conn_db.conns_server domain) then (
+            return ()
+          ) else (
+              lwt key = Key.ssh_pub_key_of_domain ~server:(Config.iodine_node_ip) 
+                          ~port:5354 domain in
+              match key with 
+              | Some(key) -> 
+                Hashtbl.add conn_db.conns_server domain 
+                {key=(List.hd key);ip=ip};
+                return (update_known_hosts ())
+              | None ->
+                return (Printf.printf "Couldn't find a valid dnskey record\n%!")
+          )
+      in
+      return ("OK")
+
+  let client_connect server_ip server_port local_dev remote_dev subnet = 
+      let cmd = Unix.getcwd () ^ "/client_tactics/ssh/client" in
+      let pid = Unix.create_process cmd 
+                [|Config.conf_dir; server_ip;server_port;local_dev;remote_dev; |] 
+                Unix.stdin Unix.stdout Unix.stderr in
+      (*             lwt _ = Lwt_unix.sleep 1.0 in *)
+      return (Printf.sprintf "10.2.%s.2" remote_dev)
+(*       Printf.printf "Server started ...\n%!"; *)
 
   let test kind args =
     match kind with
@@ -160,6 +201,21 @@ module Manager = struct
         Printf.printf "Setting up the ssh daemon...\n%!";
         server_add_client (List.hd args);
         setup_dev ()
+      | "client" ->
+        Printf.printf "Setting up the ssh client..\n%!";
+        let server_ip = List.nth args 0 in 
+        let server_port = List.nth args 1 in 
+        let domain = List.nth args 2 in 
+        let subnet = List.nth args 3 in 
+        client_add_server domain server_ip;
+        let local_dev = conn_db.max_dev_id in
+        conn_db.max_dev_id <- conn_db.max_dev_id + 1;
+        (* Ip address is constructed using the dev number in the 3 
+         * octet *)
+        let remote_dev = List.nth 
+          (Re_str.split (Re_str.regexp "\\.") subnet) 3 in 
+        client_connect server_ip server_port (string_of_int local_dev) 
+          remote_dev subnet  
       | _ -> 
         Printf.eprintf "Invalid connect kind %s\n%!" kind;
         raise (SshError "Invalid connect kind")
