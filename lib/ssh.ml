@@ -38,6 +38,7 @@ module Manager = struct
 
   type server_det = {
       ip : string;
+      port : int;
       key : string;
   }
 
@@ -57,23 +58,25 @@ module Manager = struct
 
   (* start the sshd server *)
   let run_server () =
-    Printf.printf "Starting ssh server\n%!";
     (* TODO: Check if pid is still running *)
     match conn_db.server_pid with
-      | None ->
-          let cmd = Unix.getcwd () ^ "/client_tactics/ssh/server" in
-          let _ = Unix.create_process cmd [| |] 
-            Unix.stdin Unix.stdout Unix.stderr in
+      | None ->(
+          try 
+            let cmd = Unix.getcwd () ^ "/client_tactics/ssh/server" in
+            let _ = Unix.create_process cmd [| cmd; Config.conf_dir; |] 
+              Unix.stdin Unix.stdout Unix.stderr in
 (*             lwt _ = Lwt_unix.sleep 1.0 in *)
-            Printf.printf "Server started ...\n%!";
-            let buf = String.create 100 in
-            let fd = Unix.openfile "/tmp/signpost_sshd.pid" [Unix.O_RDONLY]  0o640 in
-            let len = Unix.read fd buf 0 100 in 
-              Printf.printf "process created with pid %s...\n" (String.sub buf 0
+              Printf.printf "Server started ...\n%!";
+              let buf = String.create 100 in
+              let fd = Unix.openfile "/tmp/signpost_sshd.pid" [Unix.O_RDONLY]  0o640 in
+              let len = Unix.read fd buf 0 100 in 
+                Printf.printf "process created with pid %s...\n" (String.sub buf 0
                                                                   len);
-              conn_db.server_pid <- Some(int_of_string (String.sub buf 0 (len-1)));
-              Printf.printf "process created with pid %s...\n" (String.sub buf 0 (len-1));
-              return("OK")
+                conn_db.server_pid <- Some(int_of_string (String.sub buf 0 (len-1)));
+                Printf.printf "process created with pid %s...\n" (String.sub buf 0 (len-1));
+                return("OK")
+          with ex ->
+              return(Printexc.to_string ex))
       | Some(_) -> 
           Printf.printf "ssh server already started...\n%!";
           return("OK")
@@ -113,7 +116,8 @@ module Manager = struct
   let update_known_hosts () = 
       let file = open_out (Config.conf_dir ^ "/known_hosts") in 
       Hashtbl.iter (fun domain key -> 
-          output_string file (key.ip ^ " " ^ key.key ^ "\n") 
+          output_string file (Printf.sprintf "[%s]:%d %s\n" 
+            key.ip key.port key.key ) 
       ) conn_db.conns_server; 
       close_out file
 
@@ -135,7 +139,7 @@ module Manager = struct
       in
       return ("OK")
 
-  let client_add_server domain ip = 
+  let client_add_server domain ip port = 
       Printf.printf "Adding new server fingerprint from domain %s\n%!" domain;
       lwt _ = 
           if(Hashtbl.mem conn_db.conns_server domain) then (
@@ -146,7 +150,7 @@ module Manager = struct
               match key with 
               | Some(key) -> 
                 Hashtbl.add conn_db.conns_server domain 
-                {key=(List.hd key);ip=ip};
+                {key=(List.hd key);port;ip=ip};
                 return (update_known_hosts ())
               | None ->
                 return (Printf.printf "Couldn't find a valid dnskey record\n%!")
@@ -157,7 +161,8 @@ module Manager = struct
   let client_connect server_ip server_port local_dev remote_dev subnet = 
       let cmd = Unix.getcwd () ^ "/client_tactics/ssh/client" in
       let pid = Unix.create_process cmd 
-                [|cmd; Config.conf_dir; server_ip;server_port;local_dev;remote_dev; |] 
+                [|cmd; Config.conf_dir; server_ip;
+                (string_of_int server_port);local_dev;remote_dev; |] 
                 Unix.stdin Unix.stdout Unix.stderr in
       (*             lwt _ = Lwt_unix.sleep 1.0 in *)
       return (Printf.sprintf "10.2.%s.2" remote_dev)
@@ -204,10 +209,10 @@ module Manager = struct
       | "client" ->
         Printf.printf "Setting up the ssh client..\n%!";
         let server_ip = List.nth args 0 in 
-        let server_port = List.nth args 1 in 
+        let server_port = (int_of_string (List.nth args 1)) in 
         let domain = List.nth args 2 in 
         let subnet = List.nth args 3 in 
-        client_add_server domain server_ip;
+        client_add_server domain server_ip server_port;
         let local_dev = conn_db.max_dev_id in
         conn_db.max_dev_id <- conn_db.max_dev_id + 1;
         (* Ip address is constructed using the dev number in the 3 

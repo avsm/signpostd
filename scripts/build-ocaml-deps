@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 sudo apt-get update
-sudo apt-get -y install liblwt-ssl-ocaml-dev liblwt-ocaml-dev ocaml-native-compilers libounit-ocaml-dev git ocaml-findlib build-essential libbitstring-ocaml-dev libocamlgraph-ocaml-dev
+sudo apt-get -y install liblwt-ssl-ocaml-dev liblwt-ocaml-dev ocaml-native-compilers libounit-ocaml-dev git ocaml-findlib build-essential libbitstring-ocaml-dev libocamlgraph-ocaml-dev uml-utilities
 
 rm -rf obj
 mkdir obj
