@@ -2,6 +2,10 @@
 
 set -e 
 
-/usr/sbin/sshd -p 10000 -e -h /home/signpost/.ssh/id_rsa -o "AllowUsers=root" -o "PermitTunnel=yes" \
-    -o "AuthorizedKeysFile=.ssh/signpost_tunnel" -o "PermitRootLogin=forced-commands-only" \
+CONFIG_DIR=$1
+
+/usr/sbin/sshd -p 10000 -e -h $CONFIG_DIR/signpost.pem \
+    -o "AllowUsers=root" -o "PermitTunnel=yes" \
+    -o "AuthorizedKeysFile=.ssh/signpost_tunnel" \
+    -o "PermitRootLogin=forced-commands-only" \
     -o "PidFile=/tmp/signpost_sshd.pid"
