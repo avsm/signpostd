@@ -157,7 +157,7 @@ module Manager = struct
   let client_connect server_ip server_port local_dev remote_dev subnet = 
       let cmd = Unix.getcwd () ^ "/client_tactics/ssh/client" in
       let pid = Unix.create_process cmd 
-                [|Config.conf_dir; server_ip;server_port;local_dev;remote_dev; |] 
+                [|cmd; Config.conf_dir; server_ip;server_port;local_dev;remote_dev; |] 
                 Unix.stdin Unix.stdout Unix.stderr in
       (*             lwt _ = Lwt_unix.sleep 1.0 in *)
       return (Printf.sprintf "10.2.%s.2" remote_dev)
