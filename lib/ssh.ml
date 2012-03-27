@@ -88,14 +88,21 @@ module Manager = struct
                  ((Unix.getprotobyname "tcp").Unix.p_proto)) in        
       let ipaddr = (Unix.gethostbyname ip).Unix.h_addr_list.(0) in
       let portaddr = Unix.ADDR_INET (ipaddr, port) in
-      lwt _ = Lwt_unix.connect sock (Unix.ADDR_INET (ipaddr, port)) in 
-      lwt len = Lwt_unix.recv sock buf 0 1500 [] in 
-        Printf.printf "Received (%s) from ipaddr %s\n%!" (String.sub buf 0 len);
-        lwt _ = Lwt_unix.close sock in
-        return true
+        try_lwt 
+          lwt _ = Lwt_unix.connect sock portaddr in 
+          Printf.printf "Connected to %s:%d\n%!" ip port;
+          Lwt_unix.setsockopt sock Unix.TCP_NODELAY true;
+          Lwt_unix.setsockopt_float sock Unix.SO_RCVTIMEO 1.0;
+          lwt len = Lwt_unix.recv sock buf 0 1500 [] in  
+          Printf.printf "Received (%s) from ipaddr %s\n%!" (String.sub buf 0 len);
+          lwt _ = Lwt_unix.close sock in
+          return true
+        with ex ->
+          Printf.eprintf "error in client test %s\n%!" (Printexc.to_string ex);
+          return false
     in
     (* Need a parallel find *)
-    Lwt_list.find_s (send_pkt_to port) ips
+    Lwt_list.find_s (send_pkt_to port) ips 
 
   let update_authorized_keys () = 
       let file = open_out "/root/.ssh/signpost_tunnel" in 
@@ -186,8 +193,8 @@ module Manager = struct
               (Printf.sprintf "ifconfig tap%d up" conn_db.max_dev_id) in
     lwt _ = Lwt_unix.system 
               (Printf.sprintf 
-                 "ifconfig tap%d 10.2.%d.1" conn_db.max_dev_id
-                 conn_db.max_dev_id) in
+                 "ifconfig tap%d 10.2.%d.1 netmask 255.255.255.0" 
+                 conn_db.max_dev_id conn_db.max_dev_id) in
   return (Printf.sprintf "10.2.%d.1" conn_db.max_dev_id)
 
   let connect kind args =

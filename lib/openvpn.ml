@@ -136,8 +136,7 @@ module Manager = struct
 (*             lwt _ = Lwt_unix.sleep 1.0 in *)
         Printf.printf "Server started ...\n%!";
         let buf = String.create 100 in
-        let fd = Unix.openfile ("./signpost_vpn_server_" ^ (string_of_int
-        conn_id)) [Unix.O_RDONLY]  0o640 in
+        let fd = Unix.openfile ("./signpost_vpn_server_" ^ (string_of_int conn_id)) [Unix.O_RDONLY]  0o640 in
         let len = Unix.read fd buf 0 100 in 
         Printf.printf "process created with pid %s...\n" (String.sub buf 0
         len);
