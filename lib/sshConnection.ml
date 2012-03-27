@@ -69,12 +69,12 @@ let start_ssh_client host dst_ip dst_port node vpn_subnet =
     Printf.printf "Failed to start openvpn server on node %s\n%!" node;
     raise Ssh_error
 
-let init_ssh a b = 
+let init_ssh a b ip = 
   (* Init server on b *)
-    lwt b_ip = start_ssh_server b ssh_port a in
+    lwt a_ip = start_ssh_server a ssh_port b in
   (*Init client on b and get ip *)
-    lwt a_ip = start_ssh_client a (List.hd (Nodes.get_local_ips b)) ssh_port b
-    b_ip in
+    lwt b_ip = start_ssh_client b ip ssh_port a
+    a_ip in
   return (a_ip, b_ip)
 
 let start_local_server () =
@@ -87,14 +87,14 @@ let connect a b =
   eprintf "ssh connection %s -> %s...\n%!" a b;
     lwt (succ, ip) = pairwise_connection_test a b in
     if succ then (
-      Printf.printf "Connection using ip %s\n" ip;
-       lwt (a_ip, b_ip) = init_ssh a b in 
+      Printf.printf "Connection using ip %s\n%!" ip;
+       lwt (a_ip, b_ip) = init_ssh a b ip in 
         return ()
     ) else
       (* try the reverse direction *)
       lwt (succ, ip) = pairwise_connection_test b a  in
       if succ then
-         lwt (b_ip, a_ip) = init_ssh b a in 
+         lwt (b_ip, a_ip) = init_ssh b a ip in 
             return ()
       else
 (*         lwt _ = start_local_server () in *)
