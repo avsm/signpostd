@@ -46,9 +46,11 @@ let pairwise_connection_test a b =
     (Printexc.to_string exn) (Printexc.get_backtrace ());
     return (false, "")
 
- let start_ssh_server node port client_name = 
+ let start_ssh_server node port client_name =
+   Printf.printf "";
   let rpc = (Rpc.create_tactic_request "ssh" 
-    Rpc.CONNECT "server" [client_name;]) in
+    Rpc.CONNECT "server" [client_name^
+    (sprintf ".d%d.%s" Config.signpost_number Config.domain);]) in
   try
     lwt res = (Nodes.send_blocking node rpc) in 
     return (res)
@@ -56,11 +58,12 @@ let pairwise_connection_test a b =
     Printf.printf "Failed to start openvpn server on node %s\n%!" node;
     raise Ssh_error
 
-let start_ssh_client dst_ip dst_port node = 
+let start_ssh_client host dst_ip dst_port node vpn_subnet = 
   let rpc = (Rpc.create_tactic_request "ssh" 
-  Rpc.CONNECT "client" [dst_ip; (string_of_int ssh_port); node]) in
+  Rpc.CONNECT "client" [dst_ip; (string_of_int ssh_port);
+  (node^(sprintf ".d%d.%s" Config.signpost_number Config.domain)); vpn_subnet;]) in
   try
-    lwt res = (Nodes.send_blocking node rpc) in 
+    lwt res = (Nodes.send_blocking host rpc) in 
         return (res)
   with exn -> 
     Printf.printf "Failed to start openvpn server on node %s\n%!" node;
@@ -70,7 +73,8 @@ let init_ssh a b =
   (* Init server on b *)
     lwt b_ip = start_ssh_server b ssh_port a in
   (*Init client on b and get ip *)
-    lwt a_ip = start_ssh_client (List.hd (Nodes.get_local_ips b)) ssh_port b in
+    lwt a_ip = start_ssh_client a (List.hd (Nodes.get_local_ips b)) ssh_port b
+    b_ip in
   return (a_ip, b_ip)
 
 let start_local_server () =
@@ -82,10 +86,11 @@ let connect a b =
   (* Trying to see if connectivity is possible *)
   eprintf "ssh connection %s -> %s...\n%!" a b;
     lwt (succ, ip) = pairwise_connection_test a b in
-    if succ then
+    if succ then (
+      Printf.printf "Connection using ip %s\n" ip;
        lwt (a_ip, b_ip) = init_ssh a b in 
         return ()
-    else
+    ) else
       (* try the reverse direction *)
       lwt (succ, ip) = pairwise_connection_test b a  in
       if succ then
@@ -94,13 +99,15 @@ let connect a b =
       else
 (*         lwt _ = start_local_server () in *)
         let ip = Config.external_ip in
-        lwt [a_ip; b_ip] = (Lwt_list.map_p 
-            (start_ssh_client ip ssh_port ) [a; b]) in
-            return ()
+        lwt a_ip = start_ssh_client a ip ssh_port (sprintf 
+        "d%d.%s" Config.signpost_number Config.domain) ip in 
+        lwt b_ip =  start_ssh_client b ip ssh_port (sprintf 
+        "d%d.%s" Config.signpost_number Config.domain) ip in
+        return ()
         
      
 (* ******************************************
- * A tactic to forward all traffic to the privoxy proxy
+ * A tactic to setup a layer 2 ssh tunnel
  * ******************************************)
 
 let handle_request action method_name arg_list =

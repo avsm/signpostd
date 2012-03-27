@@ -61,50 +61,41 @@ module Manager = struct
     (* TODO: Check if pid is still running *)
     match conn_db.server_pid with
       | None ->(
-          try 
+          try
             let cmd = Unix.getcwd () ^ "/client_tactics/ssh/server" in
-            let _ = Unix.create_process cmd [| cmd; Config.conf_dir; |] 
+            let _ = Unix.create_process cmd [| cmd; Config.conf_dir |] 
               Unix.stdin Unix.stdout Unix.stderr in
-(*             lwt _ = Lwt_unix.sleep 1.0 in *)
-              Printf.printf "Server started ...\n%!";
               let buf = String.create 100 in
               let fd = Unix.openfile "/tmp/signpost_sshd.pid" [Unix.O_RDONLY]  0o640 in
               let len = Unix.read fd buf 0 100 in 
-                Printf.printf "process created with pid %s...\n" (String.sub buf 0
-                                                                  len);
+                Printf.printf "process created with pid %s...\n" 
+                  (String.sub buf 0 len);
                 conn_db.server_pid <- Some(int_of_string (String.sub buf 0 (len-1)));
                 Printf.printf "process created with pid %s...\n" (String.sub buf 0 (len-1));
                 return("OK")
-          with ex ->
-              return(Printexc.to_string ex))
+          with err ->
+            Printf.eprintf "error : %s\n%!" (Printexc.to_string err);
+            failwith  (Printexc.to_string err)
+        )
       | Some(_) -> 
           Printf.printf "ssh server already started...\n%!";
           return("OK")
 
   let run_client port ips =
     let send_pkt_to port ip = 
-      let buf = String.create 20 in
+      let buf = String.create 1500 in
       let sock = (Lwt_unix.socket Lwt_unix.PF_INET Lwt_unix.SOCK_STREAM
                  ((Unix.getprotobyname "tcp").Unix.p_proto)) in        
       let ipaddr = (Unix.gethostbyname ip).Unix.h_addr_list.(0) in
       let portaddr = Unix.ADDR_INET (ipaddr, port) in
       lwt _ = Lwt_unix.connect sock (Unix.ADDR_INET (ipaddr, port)) in 
-      Printf.printf "trying to connect to %s:%d\n%!" ip port;
-(*
-      lwt len = Lwt_unix.recv sock buf 0 20 [] in  
-         Printf.printf "Received (%s) from ipaddr %s\n%!" (String.sub buf 0
-         len);
- *)
-        Lwt_unix.close sock;
+      lwt len = Lwt_unix.recv sock buf 0 1500 [] in 
+        Printf.printf "Received (%s) from ipaddr %s\n%!" (String.sub buf 0 len);
+        lwt _ = Lwt_unix.close sock in
         return true
     in
     (* Need a parallel find *)
-    let ret = ref "" in 
-    lwt _ = Lwt.choose (List.map (fun ip -> 
-                          lwt _ = send_pkt_to port ip in
-                          ret := ip;
-                          return ()) ips) in 
-    return (!ret)
+    Lwt_list.find_s (send_pkt_to port) ips
 
   let update_authorized_keys () = 
       let file = open_out "/root/.ssh/signpost_tunnel" in 
@@ -137,7 +128,7 @@ module Manager = struct
                 return (Printf.printf "Couldn't find a valid dnskey record\n%!")
           )
       in
-      return ("OK")
+        return ("OK")
 
   let client_add_server domain ip port = 
       Printf.printf "Adding new server fingerprint from domain %s\n%!" domain;
@@ -180,7 +171,7 @@ module Manager = struct
           let port :: ips = args in 
             Printf.printf "starting client.. %s\n" port;
             lwt ip = run_client ssh_port ips in
-        (Printf.printf "Received a reply from ip %s \n%!" ip);
+            (Printf.printf "Received a reply from ip %s \n%!" ip);
             return (ip))
 
       | _ -> (
@@ -196,34 +187,33 @@ module Manager = struct
     lwt _ = Lwt_unix.system 
               (Printf.sprintf 
                  "ifconfig tap%d 10.2.%d.1" conn_db.max_dev_id
-              conn_db.max_dev_id) in
-                return (Printf.sprintf "10.2.%d.1" conn_db.max_dev_id)
-
+                 conn_db.max_dev_id) in
+  return (Printf.sprintf "10.2.%d.1" conn_db.max_dev_id)
 
   let connect kind args =
-      match kind with
+    match kind with
       | "server" ->
-        Printf.printf "Setting up the ssh daemon...\n%!";
-        server_add_client (List.hd args);
-        setup_dev ()
+          Printf.printf "Setting up the ssh daemon...\n%!";
+          server_add_client (List.hd args);
+          setup_dev ()
       | "client" ->
-        Printf.printf "Setting up the ssh client..\n%!";
-        let server_ip = List.nth args 0 in 
-        let server_port = (int_of_string (List.nth args 1)) in 
-        let domain = List.nth args 2 in 
-        let subnet = List.nth args 3 in 
-        client_add_server domain server_ip server_port;
-        let local_dev = conn_db.max_dev_id in
-        conn_db.max_dev_id <- conn_db.max_dev_id + 1;
-        (* Ip address is constructed using the dev number in the 3 
-         * octet *)
-        let remote_dev = List.nth 
-          (Re_str.split (Re_str.regexp "\\.") subnet) 3 in 
-        client_connect server_ip server_port (string_of_int local_dev) 
-          remote_dev subnet  
+          Printf.printf "Setting up the ssh client..\n%!";
+          let server_ip = List.nth args 0 in 
+          let server_port = (int_of_string (List.nth args 1)) in 
+          let domain = List.nth args 2 in 
+          let subnet = List.nth args 3 in 
+            client_add_server domain server_ip;
+            let local_dev = conn_db.max_dev_id in
+              conn_db.max_dev_id <- conn_db.max_dev_id + 1;
+              (* Ip address is constructed using the dev number in the 3 
+               * octet *)
+              let remote_dev = List.nth 
+                                 (Re_str.split (Re_str.regexp "\\.") subnet) 3 in 
+                client_connect server_ip server_port (string_of_int local_dev) 
+                  remote_dev subnet  
       | _ -> 
-        Printf.eprintf "Invalid connect kind %s\n%!" kind;
-        raise (SshError "Invalid connect kind")
+          Printf.eprintf "Invalid connect kind %s\n%!" kind;
+          raise (SshError "Invalid connect kind")
 
 
   let teardown args =
