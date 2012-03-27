@@ -113,7 +113,8 @@ module Manager = struct
 
   let update_known_hosts () = 
       let file = open_out (Config.conf_dir ^ "/known_hosts") in 
-      Hashtbl.iter (fun domain key -> 
+      Hashtbl.iter (fun domain key ->
+          Printf.sprintf "[%s]:%d %s\n" key.ip key.port key.key; 
           output_string file (Printf.sprintf "[%s]:%d %s\n" 
             key.ip key.port key.key ) 
       ) conn_db.conns_server; 
@@ -145,6 +146,7 @@ module Manager = struct
           ) else (
               lwt key = Key.ssh_pub_key_of_domain ~server:(Config.iodine_node_ip) 
                           ~port:5354 domain in
+    Printf.eprintf "dns result returned\n%!";
               match key with 
               | Some(key) -> 
                 Hashtbl.add conn_db.conns_server domain 
@@ -185,39 +187,44 @@ module Manager = struct
         Printf.printf "Action %s not supported in test" kind;
         return ("OK"))
 
-  let setup_dev () =
+  let setup_dev dev_id ip =
     conn_db.max_dev_id <- conn_db.max_dev_id + 1;
     lwt _ = Lwt_unix.system 
-              (Printf.sprintf "tunctl -t tap%d" conn_db.max_dev_id) in
+              (Printf.sprintf "tunctl -t tap%d" dev_id) in
     lwt _ = Lwt_unix.system 
-              (Printf.sprintf "ifconfig tap%d up" conn_db.max_dev_id) in
+              (Printf.sprintf "ifconfig tap%d up" dev_id) in
     lwt _ = Lwt_unix.system 
               (Printf.sprintf 
-                 "ifconfig tap%d 10.2.%d.1 netmask 255.255.255.0" 
-                 conn_db.max_dev_id conn_db.max_dev_id) in
-  return (Printf.sprintf "10.2.%d.1" conn_db.max_dev_id)
+                 "ifconfig tap%d %s netmask 255.255.255.0" 
+                 dev_id ip) in
+  return (ip)
 
   let connect kind args =
     match kind with
       | "server" ->
           Printf.printf "Setting up the ssh daemon...\n%!";
           server_add_client (List.hd args);
-          setup_dev ()
+          conn_db.max_dev_id <- conn_db.max_dev_id + 1;
+          let dev_id = conn_db.max_dev_id in 
+          let ip = Printf.sprintf "10.2.%d.1" dev_id in 
+          setup_dev dev_id ip
       | "client" ->
           Printf.printf "Setting up the ssh client..\n%!";
           let server_ip = List.nth args 0 in 
           let server_port = (int_of_string (List.nth args 1)) in 
           let domain = List.nth args 2 in 
           let subnet = List.nth args 3 in 
-            client_add_server domain server_ip;
+            lwt _ = client_add_server domain server_ip server_port in 
+            conn_db.max_dev_id <- conn_db.max_dev_id + 1;
             let local_dev = conn_db.max_dev_id in
-              conn_db.max_dev_id <- conn_db.max_dev_id + 1;
               (* Ip address is constructed using the dev number in the 3 
                * octet *)
               let remote_dev = List.nth 
                                  (Re_str.split (Re_str.regexp "\\.") subnet) 3 in 
+                let ip = Printf.sprintf "10.2.%s.2" remote_dev in 
+                lwt _ = setup_dev local_dev ip in                 
                 client_connect server_ip server_port (string_of_int local_dev) 
-                  remote_dev subnet  
+                remote_dev subnet  
       | _ -> 
           Printf.eprintf "Invalid connect kind %s\n%!" kind;
           raise (SshError "Invalid connect kind")
