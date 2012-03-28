@@ -71,6 +71,7 @@ module Manager = struct
         let cmd = Unix.getcwd () ^ "/client_tactics/ssh/server" in
         let _ = Unix.create_process cmd [| cmd; Config.conf_dir |] 
         Unix.stdin Unix.stdout Unix.stderr in
+        lwt _ = Lwt_unix.sleep 2.0 in 
         let buf = String.create 100 in
         let fd = Unix.openfile "/tmp/signpost_sshd.pid" [Unix.O_RDONLY]  0o640 in
         let len = Unix.read fd buf 0 100 in 
@@ -85,6 +86,10 @@ module Manager = struct
         Printf.printf "[ssh] ssh server already started...\n%!";
         return("OK")
 
+  (*TODO:
+   * - timeout connect 
+   * - if all tests fail how do I notify the server? 
+   * - remove ips that match local ips *)
   let run_client port ips =
     (* check if I can connect to ssh port on a remote ip *)
     let send_pkt_to port ip = 
