@@ -235,7 +235,7 @@ module Manager = struct
   (* Ip address is constructed using the dev number in the 3 
    * octet *)
             let remote_dev = List.nth 
-                     (Re_str.split (Re_str.regexp "\\.") subnet) 3 in 
+                     (Re_str.split (Re_str.regexp "\\.") subnet) 2 in 
             let ip = Printf.sprintf "10.2.%s.2" remote_dev in 
             lwt _ = setup_dev local_dev ip in                 
               client_connect server_ip server_port 
