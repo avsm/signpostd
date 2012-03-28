@@ -134,14 +134,18 @@ module Manager = struct
    *******************************************************************)
 
   let setup_dev dev_id ip =
-    lwt _ = Lwt_unix.system (Printf.sprintf "tunctl -t tap%d" dev_id) in
-    lwt _ = Lwt_unix.system (Printf.sprintf "ifconfig tap%d up" dev_id) in
-  lwt _ = Lwt_unix.system (Printf.sprintf 
-                             "ifconfig tap%d %s netmask 255.255.255.0" dev_id ip) in
-                               return (ip)
+    lwt _ = Lwt_unix.system 
+              (Printf.sprintf "tunctl -t tap%d" dev_id) in
+    lwt _ = Lwt_unix.system 
+              (Printf.sprintf "ifconfig tap%d up" dev_id) in
+    lwt _ = Lwt_unix.system 
+              (Printf.sprintf "ifconfig tap%d %s netmask 255.255.255.0" 
+                 dev_id ip) in
+      return (ip)
 
   let server_add_client domain dev_id = 
     Printf.printf "[ssh] Adding new permitted key from domain %s\n%!" domain;
+    lwt _ = run_server () in 
     (* Dump keys in authorized_key file *)
     let update_authorized_keys () = 
       let file = open_out "/root/.ssh/signpost_tunnel" in 
@@ -176,8 +180,10 @@ module Manager = struct
     let update_known_hosts () = 
       let file = open_out (Config.conf_dir ^ "/known_hosts") in 
         Hashtbl.iter (fun domain server ->
-                        output_string file (Printf.sprintf "[%s]:%d %s\n" server.ip server.port
-                                              server.cl_key)) conn_db.conns_server; 
+                      output_string file (
+                        Printf.sprintf "[%s]:%d %s\n" 
+                          server.ip server.port                    
+                          server.cl_key)) conn_db.conns_server; 
         close_out file
     in
       (* if the domain is not in the cache, add it and update the authorized
@@ -225,15 +231,15 @@ module Manager = struct
           let subnet = List.nth args 3 in 
             conn_db.max_dev_id <- conn_db.max_dev_id + 1;
             let local_dev = conn_db.max_dev_id in        
-              lwt _ = client_add_server domain server_ip server_port local_dev in 
+            lwt _ = client_add_server domain server_ip server_port local_dev in 
   (* Ip address is constructed using the dev number in the 3 
    * octet *)
-  let remote_dev = List.nth 
+            let remote_dev = List.nth 
                      (Re_str.split (Re_str.regexp "\\.") subnet) 3 in 
-  let ip = Printf.sprintf "10.2.%s.2" remote_dev in 
-    lwt _ = setup_dev local_dev ip in                 
-    client_connect server_ip server_port (string_of_int local_dev) 
-      remote_dev subnet  
+            let ip = Printf.sprintf "10.2.%s.2" remote_dev in 
+            lwt _ = setup_dev local_dev ip in                 
+              client_connect server_ip server_port 
+                (string_of_int local_dev) remote_dev subnet  
       | _ -> 
           Printf.eprintf "[ssh] Invalid connect kind %s\n%!" kind;
           raise (SshError "Invalid connect kind")
