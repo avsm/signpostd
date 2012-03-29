@@ -12,4 +12,4 @@ sudo ssh -i $CONFIG_DIR/signpost.pem -N \
     -o "GlobalKnownHostsFile=$CONFIG_DIR/known_hosts" \
     -o "HashKnownHosts=no" \
     root@$DST_IP -p $DST_PORT -o Tunnel=ethernet \
-    -w $LOCAL_DEV:$DST_DEV
+    -w $LOCAL_DEV:$DST_DEV 

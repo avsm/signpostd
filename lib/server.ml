@@ -112,6 +112,13 @@ let load_dnskey_rr () =
 let dns_t () =
   lwt fd, src = Dns_server.bind_fd ~address:"0.0.0.0" ~port:5354 in
   lwt dns_keys = load_dnskey_rr () in 
+  lwt zone_keys = (dnskey_of_pem_priv_file 
+    (Config.conf_dir ^ "/signpost.pem"))  in 
+  let zsk = 
+    match zone_keys with
+    | None -> failwith "Cannot open signpost.pem private key"
+    | Some(keys) -> List.hd keys
+  in
   let zonebuf = sprintf "
 $ORIGIN %s. ;
 $TTL 0
@@ -126,8 +133,9 @@ $TTL 0
 
 @ A %s
 i NS %s.
+@ %s
 %s" our_domain Config.external_ip our_domain Config.external_ip 
-   Config.external_dns dns_keys in
+   Config.external_dns zsk dns_keys in
   eprintf "%s\n%!" zonebuf;
   Dns.Zone.load_zone [] zonebuf;
   Dns_server.listen ~fd ~src ~dnsfn
