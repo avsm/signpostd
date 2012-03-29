@@ -19,6 +19,7 @@
 open Lwt
 open Lwt_unix
 open Lwt_list
+open Printf
 
 let ssh_port = 10000
 
@@ -57,6 +58,18 @@ module Manager = struct
                  conns_client=(Hashtbl.create 32); max_dev_id=0; 
                  server_pid=None;}
 
+(**********************************************************
+ *  Init methods
+ * *)
+
+  let init_module () = 
+   (* TODO: 
+    * - Remove all tap* devices.
+    * - kill previous sshd server. 
+    * *)
+    return ()
+  let destroy_module () = 
+  init_module ()
 
   (*********************************************************
    *       Testing methods
@@ -91,8 +104,9 @@ module Manager = struct
    * - if all tests fail how do I notify the server? 
    * - remove ips that match local ips *)
   let run_client port ips =
+    let ret = ref None in 
     (* check if I can connect to ssh port on a remote ip *)
-    let send_pkt_to port ip = 
+    let send_pkt_to wakener port ip = 
       let buf = String.create 1500 in
       let sock = (Lwt_unix.socket Lwt_unix.PF_INET Lwt_unix.SOCK_STREAM
                     ((Unix.getprotobyname "tcp").Unix.p_proto)) in        
@@ -104,16 +118,25 @@ module Manager = struct
     Printf.printf "[ssh] Received (%s) from ipaddr %s\n%!" (String.sub buf
                                                               0 len) ip;
     lwt _ = Lwt_unix.close sock in
-    return (ip) 
+    ret := Some(ip);
+    let _ = Lwt.wakeup wakener () in 
+    return () 
       with ex ->
         Printf.eprintf "[ssh] error in client test %s\n%!" (Printexc.to_string ex);
         (* hopefully within 10 seconds someone else will have waken up to
          * provide a response *)
-        Lwt_unix.sleep 10.0;
-        return("")
+        return ()
   in
-    (* Run client test for all remote ips and return the ip that reasponded first *)
-    Lwt.choose (List.map (send_pkt_to port) ips )
+    (* Run client test for all remote ips and return the ip that reasponded
+    * first *)
+    let sleeper, wakener = Lwt.task () in 
+(*     lwt _ = Lwt.choose [(Lwt_list.iter_p (send_pkt_to wakener port) ips);
+ *     sleeper] in  *)
+     lwt _ = (Lwt_list.iter_p (send_pkt_to wakener port) ips) in
+       printf "list iter failed\n%!";
+       match (!ret) with
+         | None -> raise (SshError("Error"))
+         | Some(ip) -> return (ip)
 
   let test kind args =
     match kind with
@@ -124,7 +147,7 @@ module Manager = struct
       | "client" -> (
           let port :: ips = args in 
             lwt ip = run_client ssh_port ips in
-    return (ip))
+              return (ip))
       | _ -> (
           Printf.printf "Action %s not supported in test" kind;
           return ("OK"))
@@ -237,8 +260,15 @@ module Manager = struct
             let remote_dev = List.nth 
                      (Re_str.split (Re_str.regexp "\\.") subnet) 2 in 
             let ip = Printf.sprintf "10.2.%s.2" remote_dev in 
+            let gw_ip = Printf.sprintf "10.2.%s.1" remote_dev in 
             lwt _ = setup_dev local_dev ip in                 
-              client_connect server_ip server_port 
+            
+            (* TODO: temporary hack to allow 2 nodes to talk when connected 
+            * over the server. I need to set 2 different subnets. With the 
+            * usage of openflow, this can be corrected. *) 
+            lwt _ = Lwt_unix.system 
+              (Printf.sprintf "route add -net 10.2.0.0/16 gw %s" gw_ip) in              
+                client_connect server_ip server_port 
                 (string_of_int local_dev) remote_dev subnet  
       | _ -> 
           Printf.eprintf "[ssh] Invalid connect kind %s\n%!" kind;

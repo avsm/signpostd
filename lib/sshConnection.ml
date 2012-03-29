@@ -164,8 +164,12 @@ let handle_request action method_name arg_list =
   let open Rpc in
     match action with
       | TEST ->
+        (try_lwt 
           lwt ip = Ssh.Manager.test method_name arg_list in
             return(Sp.ResponseValue ip)
+        with ex ->  
+          return(Sp.ResponseError (Printexc.to_string ex)) )
+
       | CONNECT ->
           (try 
              lwt ip = Ssh.Manager.connect method_name arg_list in
