@@ -22,9 +22,9 @@ let ip_slash_24 = "172.16.11."
 (* This is the ip of the local test machine *)
 let external_ip = "192.168.56.101"
 let external_dns = "ec2-107-20-47-111.compute-1.amazonaws.com"
-let dir = "/home/cr409/scratch/code/signpostd/"
-let conf_dir = "/home/cr409/scratch/code/signpostd/conf/"
-let tmp_dir = "/home/cr409/scratch/code/signpostd/tmp/"
+let dir = "/root/signpostd/"
+let conf_dir = dir ^ "/conf/"
+let tmp_dir = dir ^ "/tmp/"
 
 let iodine_node_ip = "172.16.11.1"
 let ns_server="8.8.8.8"

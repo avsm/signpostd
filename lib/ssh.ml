@@ -216,14 +216,18 @@ module Manager = struct
           Printf.eprintf "[ssh] A connection the specific domain already exists\n%!";
           return ()
         ) else (
+          try_lwt 
           lwt key = Key.ssh_pub_key_of_domain ~server:(Config.iodine_node_ip) ~port:5354 domain in
-    match key with 
-      | Some(key) -> 
-          Hashtbl.add conn_db.conns_server domain 
-            {cl_key=(List.hd key);port;ip; dev_id=local_dev;pid=0;};
-          return (update_known_hosts ())
-      | None ->
-          return (Printf.printf "[ssh] Couldn't find a valid dnskey record\n%!")
+          match key with 
+          | Some(key) -> 
+            Hashtbl.add conn_db.conns_server domain 
+              {cl_key=(List.hd key);port;ip; dev_id=local_dev;pid=0;};
+            return (update_known_hosts ())
+          | None ->
+            return (Printf.printf "[ssh] Couldn't find a valid dnskey record\n%!")
+            with ex ->
+              Printf.printf "[ssh] client fail %s\n%!" (Printexc.to_string ex);
+              raise (SshError(Printexc.to_string ex))
         )
                  in
                    return ("OK")
