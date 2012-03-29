@@ -56,4 +56,5 @@
 <lib/*.ml{,i}>: syntax_camlp4o
 <lib/*.ml{,i}>: pkg_lwt.syntax
 <lib/tactics/*.ml{,i}>: pkg_lwt.syntax
+<**/*.ml>: warn_Z, annot
 true: annot
