@@ -108,9 +108,9 @@ let start_local_server a b =
   printf "Starting ssh server...\n%!";
   lwt _ = Ssh.Manager.run_server () in 
   let connect_client node = 
-    let domain = (sprintf ".d%d.%s" 
+    let domain = (sprintf "d%d.%s" 
     Config.signpost_number Config.domain) in 
-    let host =  (node^ domain) in 
+    let host =  (node^ "." ^ domain) in 
       printf "[ssh] connecting host %s\n%!" host;
       Ssh.Manager.conn_db.Ssh.Manager.max_dev_id 
         <- Ssh.Manager.conn_db.Ssh.Manager.max_dev_id + 1;
@@ -124,13 +124,14 @@ let start_local_server a b =
                  Rpc.CONNECT "client" [Config.external_ip; 
                                      (string_of_int ssh_port);
                                      domain; ip;]) in
-          lwt res = (Nodes.send_blocking host rpc) in 
+          lwt res = (Nodes.send_blocking node rpc) in 
             return (res)
   in
   try 
     lwt [a_ip; b_ip ] = Lwt_list.map_s connect_client [a; b] in
       return [a_ip; b_ip]
   with ex ->
+    Printf.printf "[ssh] client fail %s\n%!" (Printexc.to_string ex);
     failwith (Printexc.to_string ex)
 
 (*

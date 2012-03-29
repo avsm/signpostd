@@ -6,7 +6,7 @@ DST_PORT=$3
 LOCAL_DEV=$4
 DST_DEV=$5
 
-sudo ssh -i $CONFIG_DIR/signpost.pem -N \
+sudo ssh -i $CONFIG_DIR/signpost.pem -e -N \
     -o "StrictHostKeyChecking=yes" \
     -o "UserKnownHostsFile=$CONFIG_DIR/known_hosts" \
     -o "GlobalKnownHostsFile=$CONFIG_DIR/known_hosts" \
