@@ -39,7 +39,10 @@ let pairwise_connection_test a b =
     lwt res = (Nodes.send_blocking a rpc) in
       Printf.printf "[ssh] ssh server started at %s\n%!" b;
 
-      let ips = Nodes.get_local_ips a in 
+      let dst_ips = Nodes.get_local_ips a in
+      let not_ips =  Nodes.get_local_ips b in
+      let ips = List.filter (fun a -> 
+        not (List.mem a not_ips) ) dst_ips in  
       let rpc = (Rpc.create_tactic_request "ssh" 
                  Rpc.TEST "client" ([(string_of_int ssh_port)] @ ips)) in
         (*TODO: check if value is not an ip and return false. *)
@@ -73,7 +76,7 @@ let start_ssh_server node port client_name =
  * under the vpn_subnet subnet. 
  * *)
 let start_ssh_client host dst_ip dst_port node vpn_subnet = 
-  let remote_host = (node^(sprintf ".d%d.%s" 
+  let remote_host = (node^ (sprintf ".d%d.%s" 
                              Config.signpost_number Config.domain)) in
   let rpc = (Rpc.create_tactic_request "ssh" 
                Rpc.CONNECT "client" [dst_ip; 
@@ -102,8 +105,31 @@ let init_ssh a b ip =
 let start_local_server a b =
   (* Maybe load a copy of the Openvpn module and let it 
    * do the magic? *)
-  
-  return ()
+  lwt _ = Ssh.Manager.run_server () in 
+  let connect_client node = 
+    let domain = (sprintf ".d%d.%s" 
+    Config.signpost_number Config.domain) in 
+    let host =  (node^ domain) in 
+      Ssh.Manager.conn_db.Ssh.Manager.max_dev_id 
+        <- Ssh.Manager.conn_db.Ssh.Manager.max_dev_id + 1;
+      let dev_id = 
+        Ssh.Manager.conn_db.Ssh.Manager.max_dev_id in 
+        
+        Ssh.Manager.server_add_client host dev_id;
+        let ip = Printf.sprintf "10.2.%d.1" dev_id in 
+        lwt _ = Ssh.Manager.setup_dev dev_id ip in 
+        let rpc = (Rpc.create_tactic_request "ssh" 
+                 Rpc.CONNECT "client" [Config.external_ip; 
+                                     (string_of_int ssh_port);
+                                     domain; ip;]) in
+          lwt res = (Nodes.send_blocking host rpc) in 
+            return (res)
+  in
+  try 
+    lwt [a_ip; b_ip ] = Lwt_list.map_s connect_client [a; b] in
+      return [a_ip; b_ip]
+  with ex ->
+    failwith (Printexc.to_string ex)
 
 (*
  * a function to setup an ssh tunnel between hosts 
@@ -125,11 +151,7 @@ let connect a b =
         lwt (b_ip, a_ip) = init_ssh b a ip in 
           return ()
       ) else (
-        let host = sprintf "d%d.%s" 
-                     Config.signpost_number Config.domain in  
-        let ip = Config.external_ip in
-        lwt a_ip = start_ssh_client a ip ssh_port host ip in 
-        lwt b_ip = start_ssh_client b ip ssh_port host ip in
+        lwt _ = start_local_server a b  in
           return ()
       )
 
