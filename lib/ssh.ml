@@ -113,19 +113,21 @@ module Manager = struct
       let ipaddr = (Unix.gethostbyname ip).Unix.h_addr_list.(0) in
       let portaddr = Unix.ADDR_INET (ipaddr, port) in
         try_lwt 
+          (* TODO: Need to get a better timeout mechanism in connect phase 
+           * otherwise we will wiat for 2 min *)
           lwt _ = Lwt_unix.connect sock portaddr in 
-      lwt len = Lwt_unix.recv sock buf 0 1500 [] in  
-    Printf.printf "[ssh] Received (%s) from ipaddr %s\n%!" (String.sub buf
-                                                              0 len) ip;
-    lwt _ = Lwt_unix.close sock in
-    ret := Some(ip);
-    let _ = Lwt.wakeup wakener () in 
-    return () 
-      with ex ->
-        Printf.eprintf "[ssh] error in client test %s\n%!" (Printexc.to_string ex);
-        (* hopefully within 10 seconds someone else will have waken up to
-         * provide a response *)
-        return ()
+          (* If no data received in 2 seconds, fail the thread. *)
+          let _ = setsockopt_float sock SO_RCVTIMEO 2.0 in 
+          lwt len = Lwt_unix.recv sock buf 0 1500 [] in  
+            Printf.printf "[ssh] Received (%s) from ipaddr %s\n%!" 
+               (String.sub buf 0 len) ip;
+             lwt _ = Lwt_unix.close sock in
+             ret := Some(ip);
+             let _ = Lwt.wakeup wakener () in 
+            return () 
+        with ex ->
+          Printf.eprintf "[ssh] error in client test %s\n%!" (Printexc.to_string ex);
+          return ()
   in
     (* Run client test for all remote ips and return the ip that reasponded
     * first *)
