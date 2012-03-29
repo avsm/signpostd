@@ -32,7 +32,7 @@ let ssh_port = 10000
  * return the ip address the was accesible
  * *)
 let pairwise_connection_test a b = 
-  try
+  try_lwt
     Printf.printf "[ssh] Trying to start ssh service...\n%!";
 
     let rpc = (Rpc.create_tactic_request "ssh" Rpc.TEST "server_start" []) in
@@ -105,11 +105,13 @@ let init_ssh a b ip =
 let start_local_server a b =
   (* Maybe load a copy of the Openvpn module and let it 
    * do the magic? *)
+  printf "Starting ssh server...\n%!";
   lwt _ = Ssh.Manager.run_server () in 
   let connect_client node = 
     let domain = (sprintf ".d%d.%s" 
     Config.signpost_number Config.domain) in 
     let host =  (node^ domain) in 
+      printf "[ssh] connecting host %s\n%!" host;
       Ssh.Manager.conn_db.Ssh.Manager.max_dev_id 
         <- Ssh.Manager.conn_db.Ssh.Manager.max_dev_id + 1;
       let dev_id = 
@@ -151,6 +153,7 @@ let connect a b =
         lwt (b_ip, a_ip) = init_ssh b a ip in 
           return ()
       ) else (
+        Printf.printf "[ssh] pairwaise tests failed. Connecting through server\n%!";
         lwt _ = start_local_server a b  in
           return ()
       )
