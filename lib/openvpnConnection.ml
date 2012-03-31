@@ -62,9 +62,9 @@ let pairwise_connection_test a b =
     return (false, "")
 (*    (true, "127.0.0.2") *)
 
-let start_vpn_server node port =
+let start_vpn_server node port client =
   let rpc = (Rpc.create_tactic_request "openvpn" 
-      Rpc.CONNECT "server" [(string_of_int openvpn_port)]) in
+    Rpc.CONNECT "server" [(string_of_int openvpn_port); client;]) in
   try
     lwt res = (Nodes.send_blocking node rpc) in 
         return (res)
@@ -84,7 +84,7 @@ let start_vpn_client dst_ip dst_port node =
 
 let init_openvpn a b = 
   (* Init server on b *)
-    lwt b_ip = start_vpn_server b openvpn_port in
+    lwt b_ip = start_vpn_server b openvpn_port a in
   (*Init client on b and get ip *)
     lwt a_ip = start_vpn_client (Nodes.get_local_ips b) openvpn_port a in
   return (a_ip, b_ip)
@@ -122,8 +122,11 @@ let handle_request action method_name arg_list =
   let open Rpc in
   match action with
   | TEST ->
+    (try_lwt
       lwt v = (Openvpn.Manager.test method_name arg_list) in
       return(Sp.ResponseValue v)
+   with ex -> 
+     return(Sp.ResponseError (Printexc.to_string ex)) )
   | CONNECT ->
       lwt v = (Openvpn.Manager.connect method_name arg_list) in
       return(Sp.ResponseValue v)            
