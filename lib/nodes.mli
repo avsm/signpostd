@@ -42,4 +42,6 @@ val discover_local_ips : ?dev:string -> unit -> Sp.ip list
 val check_for_publicly_accessible_ips : Sp.name -> Sp.ip list -> Sp.ip list Lwt.t
 val get_local_ips : Sp.name -> Sp.ip list
 val get_node_ip : Sp.name -> int32
+val get_local_name : unit -> string
+val set_local_name : string -> unit
 val convert_ip_string_to_int : Sp.ip -> int32

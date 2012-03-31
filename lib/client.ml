@@ -153,6 +153,8 @@ let signal_t ~port =
 
 let _ =
   (try node_name := Sys.argv.(1) with _ -> usage ());
+
+  Nodes.set_local_name !node_name;
   (try node_ip := Sys.argv.(2) with _ -> usage ());
   (try node_port := (of_int (int_of_string Sys.argv.(3))) with _ -> usage ());
   let daemon_t = join 

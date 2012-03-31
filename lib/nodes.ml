@@ -41,6 +41,7 @@ type nodes_state = {
   nodes: (string, node) Hashtbl.t;
 }
 
+let local_name = ref "unknown"
 
 (* node name -> Sp.node *)
 let node_db = {nodes=(Hashtbl.create 0);}
@@ -69,6 +70,11 @@ let get_local_ips name =
   let node = get name in
   node.local_ips
 
+let get_local_name () = 
+  (!local_name)
+
+let set_local_name name =
+  local_name := name
 
 (* ---------------------------------------------------------------------- *)
 
