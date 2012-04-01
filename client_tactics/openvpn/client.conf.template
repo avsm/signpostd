@@ -12,14 +12,14 @@ persist-tun
 pull
 
 ns-cert-type server
-ca client_tactics/openvpn/ca3.crt
-cert client_tactics/openvpn/client1.crt
-key client_tactics/openvpn/client1.key
+ca $tmp_dir$/$domain$/ca.crt
+cert $tmp_dir$/$domain$/signpost.crt
+key $tmp_dir$/$domain$/signpost.key
 
 comp-lzo
 verb 4
 
-writepid signpost_vpn_client_$dev_id$
+writepid $tmp_dir$/$domain/client.pid
 
 #script-security 2
 #ipchange "./ip_write.sh"

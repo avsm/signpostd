@@ -120,19 +120,19 @@ let connect a b =
 
 let handle_request action method_name arg_list =
   let open Rpc in
-  match action with
-  | TEST ->
-    (try_lwt
-      lwt v = (Openvpn.Manager.test method_name arg_list) in
-      return(Sp.ResponseValue v)
-   with ex -> 
-     return(Sp.ResponseError (Printexc.to_string ex)) )
-  | CONNECT ->
-      lwt v = (Openvpn.Manager.connect method_name arg_list) in
-      return(Sp.ResponseValue v)            
-  | TEARDOWN ->
-      eprintf "OpenVPN hasn't implemented the teardown action\n%!";
-      return(Sp.ResponseError "OpenVPN doesn't support teardown")
+    try_lwt 
+      match action with
+      | TEST ->
+        lwt v = (Openvpn.Manager.test method_name arg_list) in
+        return(Sp.ResponseValue v)
+      | CONNECT ->
+        lwt v = (Openvpn.Manager.connect method_name arg_list) in
+        return(Sp.ResponseValue v)            
+      | TEARDOWN ->
+        eprintf "OpenVPN hasn't implemented the teardown action\n%!";
+        return(Sp.ResponseError "OpenVPN doesn't support teardown")
+    with ex -> 
+      return(Sp.ResponseError (Printexc.to_string ex)) 
 
 let handle_notification action method_name arg_list =
   eprintf "OpenVPN tactic doesn't handle notifications\n%!";
