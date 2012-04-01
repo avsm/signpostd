@@ -192,26 +192,28 @@ module Manager = struct
       try_lwt
         let port = List.nth args 0 in
         let node = List.nth args 1 in
-        let domain = (sprintf ".d%d.%s"
+        let domain = (sprintf "d%d.%s"
           Config.signpost_number Config.domain) in
         let cmd = Unix.getcwd () ^ "/client_tactics/openvpn/openvpn_tactic.sh" in
         
         (* /openvpn_tactic.sh 10000 1 d2.signpo.st debian haris 10.10.0.3 tmp/ conf/ *)
-        let _ = Unix.create_process cmd 
-        [| cmd; port; (string_of_int conn_id); domain; (Nodes.get_local_name ()); 
-        node; ""; Config.conf_dir; Config.tmp_dir;|] Unix.stdin Unix.stdout Unix.stderr in
+(*         let _ = Unix.create_process cmd  *)
+        let exec_cmd = Printf.sprintf "%s %s %d %s %s %s %s %s %s "
+                    cmd port conn_id domain (Nodes.get_local_name ())
+                    node "0.0.0.0" Config.conf_dir Config.tmp_dir in
+        let _ = Printf.printf "executing: %s\n%!" exec_cmd in
 (*             lwt _ = Lwt_unix.sleep 1.0 in *)
-
-        let _ = Unix.create_process "openvpn" [|""; "--config"; 
-        (Config.tmp_dir ^ "/" ^ node ^ "." ^domain ^"/server.conf") |] in 
+        lwt _ = Lwt_unix.system exec_cmd in 
+        lwt _ = Lwt_unix.system ("openvpn --config " ^ 
+        Config.tmp_dir ^ "/" ^ node ^ "." ^domain ^"/server.conf") in
+        lwt _ = Lwt_unix.sleep 1.0 in
         let buf = String.create 100 in
         let fd = Unix.openfile 
           (Config.tmp_dir ^ "/" ^ node ^ "." ^domain ^ "/server.pid" ) 
           [Unix.O_RDONLY]  0o640 in
 
         let len = Unix.read fd buf 0 100 in 
-        Printf.printf "[openvpn] process created with pid %s...\n" (String.sub buf 0
-        len);
+        Printf.printf "[openvpn] process created with pid %d...\n%!" len;
         let pid = int_of_string (String.sub buf 0 (len-1)) in 
         Hashtbl.add conn_db.conns pid {ip=None;port=(int_of_string port);pid;};
         lwt _ = Lwt_unix.sleep 1.0 in

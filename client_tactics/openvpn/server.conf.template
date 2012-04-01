@@ -1,7 +1,7 @@
 port $port$
 proto udp
 dev tun$dev_id$
-# daemon 
+daemon 
 
 ca $tmp_dir$/$domain$/ca.crt
 cert $tmp_dir$/$domain$/vpn.crt
@@ -19,6 +19,7 @@ persist-tun
 status openvpn-status.log
 verb 4
 writepid $tmp_dir$/$domain$/server.pid
+log $tmp_dir$/$domain$/server.log
 
 #script-security 3
 #client-connect "./client-connect.sh"

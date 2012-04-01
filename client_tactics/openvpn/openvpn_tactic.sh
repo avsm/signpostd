@@ -9,8 +9,8 @@ domain=$3
 local_node=$4
 remote_node=$5
 remote_ip=$6
-tmp_dir=$7
-conf_dir=$8
+tmp_dir=$8
+conf_dir=$7
 
 # create tmp folder
 remote_host=$remote_node.$domain
