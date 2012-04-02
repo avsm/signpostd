@@ -22,7 +22,7 @@ let ip_slash_24 = "172.16.11."
 (* This is the ip of the local test machine *)
 let external_ip = "128.232.10.35"
 let external_dns = "ec2-107-20-47-111.compute-1.amazonaws.com"
-let dir = "/local/scratch/cr409/code/signpostd/"
+let dir = "/root/signpostd/"
 let conf_dir = dir ^ "/conf/"
 let tmp_dir = dir ^ "/tmp/"
 

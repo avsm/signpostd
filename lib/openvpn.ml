@@ -201,20 +201,10 @@ module Manager = struct
                     cmd port conn_id domain (Nodes.get_local_name ())
                     node "0.0.0.0" Config.conf_dir Config.tmp_dir in
         lwt _ = Lwt_unix.system exec_cmd in 
- 
-        let _ = Unix.create_process "/bin/echo" 
-                  [|"/bin/echo"; "XXXXXXXXXXXXXXXXXXX --config"; 
-            (Config.tmp_dir ^ "/" ^ node ^ "." ^domain ^"/server.conf") |] in            
         
-        let _ = Unix.create_process "/usr/sbin/openvpn" 
-                  [|"/usr/sbin/openvpn"; "--config"; 
+        let _ = Unix.create_process "openvpn" [|""; "--config"; 
             (Config.tmp_dir ^ "/" ^ node ^ "." ^domain ^"/server.conf") |] 
-            Unix.stdin Unix.stdout Unix.stderr in         
-(*
-        lwt _ = Lwt_unix.system ("openvpn --config " ^ 
-        Config.tmp_dir ^ "/" ^ node ^ "." ^domain ^"/server.conf") in
- *)
-(*           Printf.printf "/usr/sbin/openvpn --config " *)
+            Unix.stdin Unix.stdout Unix.stderr in
         Printf.printf "[openvpn] server started..\n%!";
         lwt _ = Lwt_unix.sleep 5.0 in
         let buf = String.create 100 in
