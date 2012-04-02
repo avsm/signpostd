@@ -142,6 +142,11 @@ module Manager = struct
  * Connection code 
  * ************************************************************)
 
+
+(*
+ * Old code trying to use the ocaml-crypto-keys library. 
+ * TODO: some memory leak creates problems and I need to debug. 
+ * *)
   let mkdir_internal dir = 
     try 
       Unix.mkdir dir 0o640
@@ -183,42 +188,49 @@ module Manager = struct
     Printf.printf "certificate:%s" local_cert;
     return ()
 
+    let start_openvpn_server ip port node typ = 
+      let conn_id = conn_db.max_id + 1 in 
+      conn_db.max_id <- conn_id;
+      let domain = (sprintf "d%d.%s" Config.signpost_number Config.domain) in
+      (* /openvpn_tactic.sh 10000 1 d2.signpo.st debian haris 10.10.0.3 tmp/ conf/ *)
+      (* Generate conf directories and keys *)
+      let cmd = Unix.getcwd () ^ "/client_tactics/openvpn/openvpn_tactic.sh" in
+      let exec_cmd = Printf.sprintf "%s %s %d %s %s %s %s %s %s "
+        cmd port conn_id domain (Nodes.get_local_name ())
+        node ip Config.conf_dir Config.tmp_dir in
+      lwt _ = Lwt_unix.system exec_cmd in 
+
+      (* start server *)
+      let _ = Unix.create_process "openvpn" [|""; "--config"; 
+        (Config.tmp_dir ^ "/" ^ node ^ "." ^domain ^"/" ^ typ ^ ".conf") |] 
+        Unix.stdin Unix.stdout Unix.stderr in
+        return (conn_id)
+  
+  let read_pid_from_file filename = 
+    let buf = String.create 100 in
+    let fd = Unix.openfile filename [Unix.O_RDONLY]  0o640 in
+    let len = Unix.read fd buf 0 100 in 
+    let pid = int_of_string (String.sub buf 0 (len-1)) in 
+      Printf.printf "[openvpn] process created with pid %d...\n%!" pid;
+      pid
 
   let connect kind args =
-    let conn_id = conn_db.max_id + 1 in 
-    conn_db.max_id <- conn_id;
     match kind with
     | "server" ->(
       try_lwt
         let port = List.nth args 0 in
         let node = List.nth args 1 in
-        let domain = (sprintf "d%d.%s"
-          Config.signpost_number Config.domain) in
-        let cmd = Unix.getcwd () ^ "/client_tactics/openvpn/openvpn_tactic.sh" in
-        
-        (* /openvpn_tactic.sh 10000 1 d2.signpo.st debian haris 10.10.0.3 tmp/ conf/ *)
-        let exec_cmd = Printf.sprintf "%s %s %d %s %s %s %s %s %s "
-                    cmd port conn_id domain (Nodes.get_local_name ())
-                    node "0.0.0.0" Config.conf_dir Config.tmp_dir in
-        lwt _ = Lwt_unix.system exec_cmd in 
-        
-        let _ = Unix.create_process "openvpn" [|""; "--config"; 
-            (Config.tmp_dir ^ "/" ^ node ^ "." ^domain ^"/server.conf") |] 
-            Unix.stdin Unix.stdout Unix.stderr in
+
+        let domain = node ^ (sprintf ".d%d.%s"
+          Config.signpost_number Config.domain) in  
+        lwt conn_id = start_openvpn_server "0.0.0.0" port node "server" in 
         Printf.printf "[openvpn] server started..\n%!";
         lwt _ = Lwt_unix.sleep 5.0 in
-        let buf = String.create 100 in
-        let fd = Unix.openfile 
-          (Config.tmp_dir ^ "/" ^ node ^ "." ^domain ^ "/server.pid" ) 
-          [Unix.O_RDONLY]  0o640 in
-
-        let len = Unix.read fd buf 0 100 in 
-        Printf.printf "[openvpn] process created with pid %s...\n%!" 
-          (String.sub buf 0 (len-1));
-        let pid = int_of_string (String.sub buf 0 (len-1)) in 
+        let pid = read_pid_from_file (Config.tmp_dir ^ "/" ^ node ^ "." ^ domain
+        ^"/server.pid") in 
         Hashtbl.add conn_db.conns pid {ip=None;port=(int_of_string port);pid;};
-        lwt _ = Lwt_unix.sleep 1.0 in
-        let ip = Nodes.discover_local_ips ~dev:("tun"^(string_of_int conn_id)) () in 
+        let ip = Nodes.discover_local_ips  
+          ~dev:("tun"^(string_of_int conn_id )) () in 
         return ((List.hd ip))
       with e -> 
         eprintf "[openvpn] server error: %s\n%!" (Printexc.to_string e); 
@@ -230,29 +242,17 @@ module Manager = struct
         let domain = (sprintf "d%d.%s"
           Config.signpost_number Config.domain) in
         
-        let cmd = Unix.getcwd () ^ "/client_tactics/openvpn/openvpn_tactic.sh" in
-        let exec_cmd = Printf.sprintf "%s %s %d %s %s %s %s %s %s "
-                  cmd port conn_id domain (Nodes.get_local_name ())
-                  node ip Config.conf_dir Config.tmp_dir in
-        lwt _ = Lwt_unix.system exec_cmd in 
-        let _ = Unix.create_process "openvpn" [|""; "--config"; 
-            (Config.tmp_dir ^ "/" ^ node ^ "." ^domain ^"/client.conf") |] 
-            Unix.stdin Unix.stdout Unix.stderr in         
-(*
-        lwt _ = Lwt_unix.system ("openvpn --config " ^ 
-                  Config.tmp_dir ^ "/" ^ node ^ "." ^domain ^"/client.conf") in
- *)
+        lwt conn_id = start_openvpn_server ip port node "client" in  
+        Printf.printf "[openvpn] server started..\n%!";
         lwt _ = Lwt_unix.sleep 5.0 in          
-        let buf = String.create 100 in
-        let fd = Unix.openfile (Config.tmp_dir ^ "/" ^ node ^ "." 
-                   ^ domain ^  "/client.pid") [Unix.O_RDONLY]  0o640 in
-        let len = Unix.read fd buf 0 100 in 
-        let pid = int_of_string (String.sub buf 0 (len-1)) in 
-        Printf.printf "[openvpn] process created with pid %d...\n%!" pid;
-        Hashtbl.add conn_db.conns pid {ip=Some(ip);port=(int_of_string port);pid;};
-(*         lwt _ = Lwt_unix.sleep 3.0 in *)
+
+        let pid = read_pid_from_file (Config.tmp_dir ^ "/" ^ 
+          node ^ "." ^ domain ^  "/client.pid") in 
+        Hashtbl.add conn_db.conns pid {ip=Some(ip);
+                                       port=(int_of_string port);
+                                       pid;};
+        
         let ip = Nodes.discover_local_ips ~dev:("tun"^(string_of_int conn_id)) () in
-          Printf.printf "[openvpn] return ip addr %d\n%!" (List.length ip);
         return ((List.hd ip))       
       with ex ->
         raise(OpenVpnError(Printexc.to_string ex)))
