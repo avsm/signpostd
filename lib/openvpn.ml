@@ -201,21 +201,30 @@ module Manager = struct
                     cmd port conn_id domain (Nodes.get_local_name ())
                     node "0.0.0.0" Config.conf_dir Config.tmp_dir in
         lwt _ = Lwt_unix.system exec_cmd in 
-    
-        let _ = Unix.create_process "openvpn" [|""; "--config"; 
-            (Config.tmp_dir ^ "/" ^ node ^ "." ^domain ^"/server.conf") |] in         
+ 
+        let _ = Unix.create_process "/bin/echo" 
+                  [|"/bin/echo"; "XXXXXXXXXXXXXXXXXXX --config"; 
+            (Config.tmp_dir ^ "/" ^ node ^ "." ^domain ^"/server.conf") |] in            
+        
+        let _ = Unix.create_process "/usr/sbin/openvpn" 
+                  [|"/usr/sbin/openvpn"; "--config"; 
+            (Config.tmp_dir ^ "/" ^ node ^ "." ^domain ^"/server.conf") |] 
+            Unix.stdin Unix.stdout Unix.stderr in         
 (*
         lwt _ = Lwt_unix.system ("openvpn --config " ^ 
         Config.tmp_dir ^ "/" ^ node ^ "." ^domain ^"/server.conf") in
  *)
-        lwt _ = Lwt_unix.sleep 3.0 in
+(*           Printf.printf "/usr/sbin/openvpn --config " *)
+        Printf.printf "[openvpn] server started..\n%!";
+        lwt _ = Lwt_unix.sleep 5.0 in
         let buf = String.create 100 in
         let fd = Unix.openfile 
           (Config.tmp_dir ^ "/" ^ node ^ "." ^domain ^ "/server.pid" ) 
           [Unix.O_RDONLY]  0o640 in
 
         let len = Unix.read fd buf 0 100 in 
-        Printf.printf "[openvpn] process created with pid %d...\n%!" len;
+        Printf.printf "[openvpn] process created with pid %s...\n%!" 
+          (String.sub buf 0 (len-1));
         let pid = int_of_string (String.sub buf 0 (len-1)) in 
         Hashtbl.add conn_db.conns pid {ip=None;port=(int_of_string port);pid;};
         lwt _ = Lwt_unix.sleep 1.0 in
@@ -237,7 +246,8 @@ module Manager = struct
                   node ip Config.conf_dir Config.tmp_dir in
         lwt _ = Lwt_unix.system exec_cmd in 
         let _ = Unix.create_process "openvpn" [|""; "--config"; 
-            (Config.tmp_dir ^ "/" ^ node ^ "." ^domain ^"/client.conf") |] in         
+            (Config.tmp_dir ^ "/" ^ node ^ "." ^domain ^"/client.conf") |] 
+            Unix.stdin Unix.stdout Unix.stderr in         
 (*
         lwt _ = Lwt_unix.system ("openvpn --config " ^ 
                   Config.tmp_dir ^ "/" ^ node ^ "." ^domain ^"/client.conf") in
