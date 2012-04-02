@@ -13,13 +13,15 @@ pull
 
 ns-cert-type server
 ca $tmp_dir$/$domain$/ca.crt
-cert $tmp_dir$/$domain$/signpost.crt
-key $tmp_dir$/$domain$/signpost.key
+cert $tmp_dir$/$domain$/vpn.crt
+key $tmp_dir$/$domain$/vpn.pem
 
 comp-lzo
 verb 4
 
-writepid $tmp_dir$/$domain/client.pid
+writepid $tmp_dir$/$domain$/client.pid
+log $tmp_dir$/$domain$/client.log
+
 
 #script-security 2
 #ipchange "./ip_write.sh"
