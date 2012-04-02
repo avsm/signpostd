@@ -2,7 +2,7 @@ client
 dev tun$dev_id$
 proto udp
 remote $ip$ $port$
-daemon
+# daemon
 
 resolv-retry infinite
 nobind
@@ -11,7 +11,7 @@ persist-key
 persist-tun
 pull
 
-ns-cert-type server
+# ns-cert-type server
 ca $tmp_dir$/$domain$/ca.crt
 cert $tmp_dir$/$domain$/vpn.crt
 key $tmp_dir$/$domain$/vpn.pem

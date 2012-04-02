@@ -201,9 +201,14 @@ module Manager = struct
                     cmd port conn_id domain (Nodes.get_local_name ())
                     node "0.0.0.0" Config.conf_dir Config.tmp_dir in
         lwt _ = Lwt_unix.system exec_cmd in 
+    
+        let _ = Unix.create_process "openvpn" [|""; "--config"; 
+            (Config.tmp_dir ^ "/" ^ node ^ "." ^domain ^"/server.conf") |] in         
+(*
         lwt _ = Lwt_unix.system ("openvpn --config " ^ 
         Config.tmp_dir ^ "/" ^ node ^ "." ^domain ^"/server.conf") in
-        lwt _ = Lwt_unix.sleep 1.0 in
+ *)
+        lwt _ = Lwt_unix.sleep 3.0 in
         let buf = String.create 100 in
         let fd = Unix.openfile 
           (Config.tmp_dir ^ "/" ^ node ^ "." ^domain ^ "/server.pid" ) 
@@ -231,9 +236,13 @@ module Manager = struct
                   cmd port conn_id domain (Nodes.get_local_name ())
                   node ip Config.conf_dir Config.tmp_dir in
         lwt _ = Lwt_unix.system exec_cmd in 
+        let _ = Unix.create_process "openvpn" [|""; "--config"; 
+            (Config.tmp_dir ^ "/" ^ node ^ "." ^domain ^"/client.conf") |] in         
+(*
         lwt _ = Lwt_unix.system ("openvpn --config " ^ 
                   Config.tmp_dir ^ "/" ^ node ^ "." ^domain ^"/client.conf") in
-        lwt _ = Lwt_unix.sleep 3.0 in          
+ *)
+        lwt _ = Lwt_unix.sleep 5.0 in          
         let buf = String.create 100 in
         let fd = Unix.openfile (Config.tmp_dir ^ "/" ^ node ^ "." 
                    ^ domain ^  "/client.pid") [Unix.O_RDONLY]  0o640 in

@@ -22,8 +22,8 @@ if [ ! -e $dst_dir ]; then
 fi
 
 # setup required key and certificates
-cp conf/signpost.pem $dst_dir/
-cp conf/signpost.crt $dst_dir/
+# cp conf/signpost.pem $dst_dir/
+# cp conf/signpost.crt $dst_dir/
 
 openssl genrsa -out $dst_dir/vpn.pem 2048
 
@@ -71,13 +71,11 @@ cat client_tactics/openvpn/server.conf.template | sed \
    -e "s/\\\$port\\\$/$port/g" \
    -e "s/\\\$domain\\\$/$remote_host/g" \
    -e "s/\\\$tmp_dir\\\$/$tmp_dir/g" \
-   -e "s/\\\$dev_id\\\$/$dev_id/g"\
-   | tee $dst_dir/server.conf
+   -e "s/\\\$dev_id\\\$/$dev_id/g" > $dst_dir/server.conf
 
 cat client_tactics/openvpn/client.conf.template |\
    sed -e "s/\\\$port\\\$/$port/g"\
    -e "s/\\\$dev_id\\\$/$dev_id/g" \
    -e "s/\\\$domain\\\$/$remote_host/g" \
    -e "s/\\\$tmp_dir\\\$/$tmp_dir/g" \
-   -e "s/\\\$ip\\\$/$remote_ip/g" | \
-   tee $dst_dir/client.conf
+   -e "s/\\\$ip\\\$/$remote_ip/g" > $dst_dir/client.conf

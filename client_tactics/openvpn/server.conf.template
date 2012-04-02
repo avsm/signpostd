@@ -1,7 +1,7 @@
 port $port$
 proto udp
 dev tun$dev_id$
-daemon 
+# daemon 
 
 ca $tmp_dir$/$domain$/ca.crt
 cert $tmp_dir$/$domain$/vpn.crt
