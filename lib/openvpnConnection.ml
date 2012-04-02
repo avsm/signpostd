@@ -19,7 +19,7 @@ open Lwt
 open Lwt_unix
 open Printf
 open Int64
-
+open Rpc
 
 exception Openvpn_error
 
@@ -50,12 +50,13 @@ let pairwise_connection_test a b =
   let ips = Nodes.get_local_ips a in 
   let rpc = (Rpc.create_tactic_request "openvpn" 
       Rpc.TEST "client" ([(string_of_int openvpn_port)] @ ips)) in
-  lwt res = (Nodes.send_blocking b rpc) in 
-  
+  lwt res = (Nodes.send_blocking b rpc) in   
+  let resp_ip = rpc_of_string res in 
+
   let rpc = (Rpc.create_tactic_request "openvpn" 
       Rpc.TEST "server_stop" [(string_of_int openvpn_port)]) in
-  lwt res = (Nodes.send_blocking a rpc) in 
-   return (true, res)
+  lwt _ = (Nodes.send_blocking a rpc) in 
+  return (true, res)
   with exn ->
     Printf.eprintf "Pairwise test %s->%s failed:%s\n%s\n%!" a b
     (Printexc.to_string exn) (Printexc.get_backtrace ());
@@ -72,9 +73,9 @@ let start_vpn_server node port client =
     Printf.printf "Failed to start openvpn server on node %s\n%!" node;
     raise Openvpn_error
 
-let start_vpn_client dst_ip dst_port node = 
+let start_vpn_client dst_ip dst_port  host node = 
   let rpc = (Rpc.create_tactic_request "openvpn" 
-      Rpc.CONNECT "client" ["10.20.0.3"; (string_of_int openvpn_port)]) in
+  Rpc.CONNECT "client" [dst_ip; (string_of_int openvpn_port); host]) in
   try
     lwt res = (Nodes.send_blocking node rpc) in 
         return (res)
@@ -82,11 +83,11 @@ let start_vpn_client dst_ip dst_port node =
     Printf.printf "Failed to start openvpn server on node %s\n%!" node;
     raise Openvpn_error
 
-let init_openvpn a b = 
+let init_openvpn ip a b = 
   (* Init server on b *)
-    lwt b_ip = start_vpn_server b openvpn_port a in
+    lwt b_ip = start_vpn_server a openvpn_port b in
   (*Init client on b and get ip *)
-    lwt a_ip = start_vpn_client (Nodes.get_local_ips b) openvpn_port a in
+    lwt a_ip = start_vpn_client ip openvpn_port a b in
   return (a_ip, b_ip)
 
 let start_local_server () =
@@ -99,20 +100,20 @@ let connect a b =
   (* Trying to see if connectivity is possible *)
     lwt (succ, ip) = pairwise_connection_test a b in
     if succ then
-      lwt (a_ip, b_ip) = init_openvpn a b in 
+      lwt (a_ip, b_ip) = init_openvpn ip a b in 
         return ()
     else
       (* try the reverse direction *)
       lwt (succ, ip) = pairwise_connection_test b a  in
       if succ then
-        lwt (b_ip, a_ip) = init_openvpn b a in
+        lwt (b_ip, a_ip) = init_openvpn ip b a in
             return ()
       else
         lwt _ = start_local_server () in
         let ip = Config.external_ip in
-        lwt [a_ip; b_ip] = (Lwt_list.map_p 
-            (start_vpn_client ip openvpn_port) [a; b]) in
-            return ()
+        lwt a_ip = start_vpn_client ip openvpn_port b a in 
+        lwt b_ip = start_vpn_client ip openvpn_port a b in 
+          return ()
         
 
 (**********************************************************************
