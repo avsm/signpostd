@@ -9,21 +9,18 @@ domain=$3
 local_node=$4
 remote_node=$5
 remote_ip=$6
-tmp_dir=$8
-conf_dir=$7
+dst_domain=$7
+tmp_dir=$9
+conf_dir=$8
 
 # create tmp folder
 remote_host=$remote_node.$domain
 local_host=$local_node.$domain
-dst_dir=$tmp_dir/$remote_host/
+dst_dir=$tmp_dir/$dst_domain/
 
 if [ ! -e $dst_dir ]; then 
   mkdir $dst_dir
 fi
-
-# setup required key and certificates
-# cp conf/signpost.pem $dst_dir/
-# cp conf/signpost.crt $dst_dir/
 
 openssl genrsa -out $dst_dir/vpn.pem 2048
 
@@ -51,6 +48,8 @@ crypto-convert \
   -D 30758400 \
   -K $dst_dir/vpn.crt
 
+# sign the remote domain certificate
+echo fetching key $remote_host
 crypto-convert \
   -k $remote_host \
   -t DNS_PUB \
@@ -60,9 +59,9 @@ crypto-convert \
   -i "C=UK,O=signpost,CN=$local_host," \
   -T PEM_CERT \
   -D 30758400 \
-  -K $dst_dir/dns.crt
+  -K $dst_dir/allowed-$remote_host.crt
 
-cat $dst_dir/tmp.crt $dst_dir/dns.crt > $dst_dir/ca.crt
+cat $dst_dir/tmp.crt $dst_dir/allowed-*.crt > $dst_dir/ca.crt
 # cat $dst_dir/dns.crt > $dst_dir/ca.crt
 
 tmp_dir=`echo $tmp_dir  | sed -e 's/\//\\\\\//g' `
