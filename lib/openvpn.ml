@@ -30,7 +30,7 @@ module Manager = struct
     port: int;
     pid: int;
     dev_id:int;
-    nodes: string list;
+    mutable nodes: string list;
   }
 
   type conn_db_type = {
@@ -234,7 +234,16 @@ module Manager = struct
         return (conn_id)
       (* start server *)
   
-      let read_pid_from_file filename = 
+    let server_append_dev node domain typ =
+      let cmd = Unix.getcwd () ^ 
+        "/client_tactics/openvpn/openvpn_append_device.sh" in
+
+      let exec_cmd = Printf.sprintf "%s %s.d%d %s %s %s %s %s "
+        cmd  (Nodes.get_local_name ()) Config.signpost_number 
+        node Config.domain domain Config.conf_dir Config.tmp_dir in
+      Lwt_unix.system exec_cmd
+        
+    let read_pid_from_file filename = 
         let buf = String.create 100 in
         let fd = Unix.openfile filename [Unix.O_RDONLY]  0o640 in
         let len = Unix.read fd buf 0 100 in 
@@ -250,15 +259,32 @@ module Manager = struct
         let node = List.nth args 1 in
         let domain = List.nth args 2 in 
 
-        lwt dev_id = start_openvpn_server "0.0.0.0" port 
+        lwt dev_id = 
+            if Hashtbl.mem conn_db.conns domain then  (
+                let conn = Hashtbl.find conn_db.conns domain in
+                if (List.mem (node ^ "." ^ Config.domain) conn.nodes) then ( 
+                    (* A connection already exists *)
+                    return (conn.dev_id)
+                ) else (
+                    (* Add a domain to the existing domain and restart service *)
+                    let _ = server_append_dev domain node in
+                    conn.nodes <- conn.nodes @ [(node ^ "." ^ Config.domain)];
+                    (* restart server *)
+                    Unix.kill conn.pid Sys.sigusr1;
+                    return (conn.dev_id)
+                )
+            ) else (
+                (* if domain seen for the first time, setup conf dir and start 
+                 * server *)
+                lwt dev_id = start_openvpn_server "0.0.0.0" port 
                        node domain "server" in 
-        Printf.printf "[openvpn] server started..\n%!";
-(*         lwt _ = Lwt_unix.sleep 5.0 in *)
-        let pid = read_pid_from_file (Config.tmp_dir ^ "/" ^ 
-                    domain ^"/server.pid") in 
-        Hashtbl.add conn_db.conns (domain) 
-                     {ip=None;port=(int_of_string port);pid;
-                     dev_id;nodes=[node ^ "." ^ Config.domain]};
+                 let pid = read_pid_from_file (Config.tmp_dir ^ "/" ^ 
+                             domain ^"/server.pid") in 
+                 Hashtbl.add conn_db.conns (domain) 
+                           {ip=None;port=(int_of_string port);pid;
+                           dev_id;nodes=[node ^ "." ^ Config.domain]};
+                           return(dev_id) ) 
+        in
         let ip = Nodes.discover_local_ips  
           ~dev:("tun"^(string_of_int dev_id)) () in 
         return ((List.hd ip))
@@ -271,9 +297,6 @@ module Manager = struct
         let ip :: port :: node :: domain :: args = args in
         lwt dev_id = start_openvpn_server ip port node domain 
                        "client" in  
-        Printf.printf "[openvpn] server started..\n%!";
-(*         lwt _ = Lwt_unix.sleep 6.0 in           *)
-
         let pid = read_pid_from_file (Config.tmp_dir ^ "/" ^ 
                     domain ^  "/client.pid") in 
         Hashtbl.add conn_db.conns (domain) 
