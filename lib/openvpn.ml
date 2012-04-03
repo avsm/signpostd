@@ -190,6 +190,31 @@ module Manager = struct
     Printf.printf "certificate:%s" local_cert;
     return ()
 
+  let rec connect_to_server domain typ tries =
+    Printf.printf "[openvpn] trying to start %s with try %d\n%!" typ tries;
+    let remove_file_if_exists file = 
+      if (Sys.file_exists file) then 
+        Unix.unlink file 
+      else
+        ()
+    in
+    let dst_dir = Config.tmp_dir ^ "/" ^ domain in 
+    let pid_file = dst_dir ^ "/" ^typ ^ ".pid" in 
+    let _ = remove_file_if_exists pid_file in 
+    let _ = Unix.create_process "openvpn" 
+              [|""; "--config"; 
+                (Config.tmp_dir ^ "/" ^ domain ^"/" ^ typ ^ ".conf") |] 
+              Unix.stdin Unix.stdout Unix.stderr in
+      lwt _ = Lwt_unix.sleep 4.0 in 
+    if (Sys.file_exists pid_file) then 
+      return (true)
+    else 
+      (match tries with 
+        | 0 -> return (false )
+        | tries -> 
+            connect_to_server domain typ (tries-1))
+
+
     let start_openvpn_server ip port node domain typ = 
       let conn_id = conn_db.max_id + 1 in 
       conn_db.max_id <- conn_id;
@@ -200,12 +225,14 @@ module Manager = struct
         cmd port conn_id Config.domain (Nodes.get_local_name ())
         Config.signpost_number node ip domain Config.conf_dir Config.tmp_dir in
       lwt _ = Lwt_unix.system exec_cmd in 
-
-      (* start server *)
-      let _ = Unix.create_process "openvpn" [|""; "--config"; 
-        (Config.tmp_dir ^ "/" ^ domain ^"/" ^ typ ^ ".conf") |] 
-        Unix.stdin Unix.stdout Unix.stderr in
+(*     let _ = connect_to_server domain typ 3 in  *)
+    let _ = Unix.create_process "openvpn" 
+              [|""; "--config"; 
+                (Config.tmp_dir ^ "/" ^ domain ^"/" ^ typ ^ ".conf") |] 
+              Unix.stdin Unix.stdout Unix.stderr in
+      lwt _ = Lwt_unix.sleep 4.0 in      
         return (conn_id)
+      (* start server *)
   
       let read_pid_from_file filename = 
         let buf = String.create 100 in
@@ -223,14 +250,10 @@ module Manager = struct
         let node = List.nth args 1 in
         let domain = List.nth args 2 in 
 
-(*
-        let domain = node ^ (sprintf ".d%d.%s"
-          Config.signpost_number Config.domain) in  
-*)
         lwt dev_id = start_openvpn_server "0.0.0.0" port 
                        node domain "server" in 
         Printf.printf "[openvpn] server started..\n%!";
-        lwt _ = Lwt_unix.sleep 5.0 in
+(*         lwt _ = Lwt_unix.sleep 5.0 in *)
         let pid = read_pid_from_file (Config.tmp_dir ^ "/" ^ 
                     domain ^"/server.pid") in 
         Hashtbl.add conn_db.conns (domain) 
@@ -246,11 +269,10 @@ module Manager = struct
     | "client" -> (
       try_lwt
         let ip :: port :: node :: domain :: args = args in
-        
         lwt dev_id = start_openvpn_server ip port node domain 
                        "client" in  
         Printf.printf "[openvpn] server started..\n%!";
-        lwt _ = Lwt_unix.sleep 5.0 in          
+(*         lwt _ = Lwt_unix.sleep 6.0 in           *)
 
         let pid = read_pid_from_file (Config.tmp_dir ^ "/" ^ 
                     domain ^  "/client.pid") in 
