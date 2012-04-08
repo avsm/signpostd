@@ -1,0 +1,3 @@
+#!/usr/bin/rnv bash 
+
+ip addr show | awk '/^[0-9]:/ {dev=$2;sub(/\:/,"", dev);} /inet / {split($2,a,"/"); print dev,a[1];}'
