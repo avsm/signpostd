@@ -115,7 +115,6 @@ module Manager = struct
       let port = (int_of_string (List.hd args)) in 
       let _ = run_server port in
         return ("OK"))
-
     (* code to stop the udp echo server*)
     | "server_stop" -> (
       Printf.printf "[openvpn] stoping server...\n%!";
@@ -220,10 +219,20 @@ module Manager = struct
       conn_db.max_id <- conn_id;
       (* /openvpn_tactic.sh 10000 1 d2.signpo.st debian haris 10.10.0.3 tmp/ conf/ *)
       (* Generate conf directories and keys *)
-      let cmd = Unix.getcwd () ^ "/client_tactics/openvpn/openvpn_tactic.sh" in
-      let exec_cmd = Printf.sprintf "%s %s %d %s %s.d%d %s %s %s %s %s "
-        cmd port conn_id Config.domain (Nodes.get_local_name ())
-        Config.signpost_number node ip domain Config.conf_dir Config.tmp_dir in
+      let cmd = Config.dir ^ "/client_tactics/openvpn/openvpn_tactic.sh" in
+      let exec_cmd = 
+        if ((Nodes.get_local_name ()) = "unknown" ) then
+           Printf.sprintf "%s %s %d %s d%d %s %s %s %s %s "
+                   cmd port conn_id Config.domain
+                   Config.signpost_number node ip domain Config.conf_dir 
+                   Config.tmp_dir   
+        else
+          Printf.sprintf "%s %s %d %s %s.d%d %s %s %s %s %s "
+                   cmd port conn_id Config.domain (Nodes.get_local_name ())
+                   Config.signpost_number node ip domain Config.conf_dir 
+                   Config.tmp_dir 
+      in
+      Printf.printf "[openvpn] executing %s\n%!" exec_cmd;
       lwt _ = Lwt_unix.system exec_cmd in 
 (*     let _ = connect_to_server domain typ 3 in  *)
     let _ = Unix.create_process "openvpn" 
@@ -235,13 +244,20 @@ module Manager = struct
       (* start server *)
   
     let server_append_dev node domain typ =
-      let cmd = Unix.getcwd () ^ 
+      let cmd = Config.dir ^ 
         "/client_tactics/openvpn/openvpn_append_device.sh" in
-
-      let exec_cmd = Printf.sprintf "%s %s.d%d %s %s %s %s %s "
-        cmd  (Nodes.get_local_name ()) Config.signpost_number 
-        node Config.domain domain Config.conf_dir Config.tmp_dir in
-      Lwt_unix.system exec_cmd
+      let exec_cmd =  
+        if ((Nodes.get_local_name ()) = "unknown" ) then
+          Printf.sprintf "%s d%d %s %s %s %s %s"
+                   cmd Config.signpost_number node Config.domain 
+                   domain Config.conf_dir Config.tmp_dir  
+        else
+          Printf.sprintf "%s %s.d%d %s %s %s %s %s"
+                   cmd  (Nodes.get_local_name ()) Config.signpost_number 
+                   node Config.domain domain Config.conf_dir Config.tmp_dir  
+      in
+      Printf.printf "[openvpn] executing %s\n%!" exec_cmd;
+      Lwt_unix.system exec_cmd  
         
     let read_pid_from_file filename = 
         let buf = String.create 100 in
@@ -264,18 +280,24 @@ module Manager = struct
                 let conn = Hashtbl.find conn_db.conns domain in
                 if (List.mem (node ^ "." ^ Config.domain) conn.nodes) then ( 
                     (* A connection already exists *)
+                    Printf.printf "[openvpn] node %s is already added\n%!" node;
                     return (conn.dev_id)
                 ) else (
                     (* Add a domain to the existing domain and restart service *)
-                    let _ = server_append_dev domain node in
+                    Printf.printf "[openvpn] server already started. adding
+                    device %s\n%!" node;
+                    let _ = server_append_dev node domain "server" in
                     conn.nodes <- conn.nodes @ [(node ^ "." ^ Config.domain)];
                     (* restart server *)
                     Unix.kill conn.pid Sys.sigusr1;
+                    lwt _ = Lwt_unix.sleep 4.0 in      
                     return (conn.dev_id)
                 )
             ) else (
                 (* if domain seen for the first time, setup conf dir and start 
                  * server *)
+                Printf.printf "[openvpn] starting server and adding device %s\n%!" 
+                         node;
                 lwt dev_id = start_openvpn_server "0.0.0.0" port 
                        node domain "server" in 
                  let pid = read_pid_from_file (Config.tmp_dir ^ "/" ^ 

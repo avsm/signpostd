@@ -40,7 +40,7 @@ let name () = "openvpn"
  *)
 
 let pairwise_connection_test a b =
-  try 
+  try_lwt 
 (*   let (dst_ip, dst_port) = Nodes.signalling_channel a in *)
   let rpc = (Rpc.create_tactic_request "openvpn" 
       Rpc.TEST "server_start" [(string_of_int openvpn_port)]) in
@@ -64,42 +64,54 @@ let pairwise_connection_test a b =
 (*    (true, "127.0.0.2") *)
 
 let start_vpn_server node port client domain =
-  let rpc = (Rpc.create_tactic_request "openvpn" 
-  Rpc.CONNECT "server" [(string_of_int openvpn_port); client;domain;]) in
-  try
-    lwt res = (Nodes.send_blocking node rpc) in 
-        return (res)
-  with exn -> 
-    Printf.printf "Failed to start openvpn server on node %s\n%!" node;
+  try_lwt
+    let rpc = (Rpc.create_tactic_request "openvpn" 
+      Rpc.CONNECT "server" [(string_of_int openvpn_port); client;domain;]) in
+      Nodes.send_blocking node rpc
+  with ex -> 
+    Printf.printf "Failed to start openvpn server on node %s %s\n%!" node
+    (Printexc.to_string ex);
     raise Openvpn_error
 
 let start_vpn_client dst_ip host dst_port node domain = 
   let rpc = (Rpc.create_tactic_request "openvpn" 
   Rpc.CONNECT "client" [dst_ip; 
                 (string_of_int openvpn_port); 
-                host;domain;]) in
+                node;domain;]) in
   try
-    lwt res = (Nodes.send_blocking node rpc) in 
+    lwt res = (Nodes.send_blocking host rpc) in 
         return (res)
-  with exn -> 
-    Printf.printf "Failed to start openvpn server on node %s\n%!" node;
+  with ex -> 
+    Printf.printf "Failed to start openvpn server on node %s %s\n%!" 
+    node (Printexc.to_string ex);
     raise Openvpn_error
 
 let init_openvpn ip a b = 
   (* Init server on b *)
     lwt b_ip = start_vpn_server a openvpn_port 
                  (sprintf "%s.d%d" b Config.signpost_number) 
-                 (sprintf "%s.d%d" b Config.signpost_number) in
+                 (sprintf "%s.d%d.%s" b Config.signpost_number
+                 Config.domain) in
   (*Init client on b and get ip *)
-    lwt a_ip = start_vpn_client ip a openvpn_port
-                 (sprintf "%s.d%d" b Config.signpost_number) 
-                 (sprintf "%s.d%d" b Config.signpost_number) in
+    lwt a_ip = start_vpn_client ip b openvpn_port
+                 (sprintf "%s.d%d" a Config.signpost_number) 
+                 (sprintf "%s.d%d.%s" a Config.signpost_number
+                 Config.domain) in
   return (a_ip, b_ip)
 
-let start_local_server () =
+let start_local_server a b =
   (* Maybe load a copy of the Openvpn module and let it 
    * do the magic? *)
-  
+  lwt _ = Openvpn.Manager.connect "server" 
+                   [(string_of_int openvpn_port); 
+                    (sprintf "%s.d%d" a Config.signpost_number) ;
+                    (sprintf "d%d.%s" Config.signpost_number
+                       Config.domain);] in 
+   lwt _ = Openvpn.Manager.connect "server" 
+                   [(string_of_int openvpn_port); 
+                    (sprintf "%s.d%d" b Config.signpost_number) ;
+                    (sprintf "d%d.%s" Config.signpost_number
+                       Config.domain);] in 
   return ()
 
 let connect a b =
@@ -116,14 +128,14 @@ let connect a b =
         lwt (b_ip, a_ip) = init_openvpn ip b a in
             return ()
       else
-        lwt _ = start_local_server () in
+        lwt _ = start_local_server a b in
         let ip = Config.external_ip in
         lwt a_ip = start_vpn_client ip b openvpn_port 
-                     (sprintf "%s.d%d" a Config.signpost_number) 
-                     (sprintf "%s.d%d" a Config.signpost_number) in 
+                     (sprintf "d%d" Config.signpost_number) 
+                     (sprintf "d%d.%s" Config.signpost_number Config.domain) in 
         lwt b_ip = start_vpn_client ip a openvpn_port
-                     (sprintf "%s.d%d" b Config.signpost_number) 
-                     (sprintf "%s.d%d" b Config.signpost_number) in 
+                     (sprintf "d%d" Config.signpost_number) 
+                     (sprintf "d%d.%s" Config.signpost_number Config.domain) in 
           return ()
         
 
