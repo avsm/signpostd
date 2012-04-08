@@ -15,12 +15,12 @@ local_host=$local_node.$domain
 dst_dir=$tmp_dir/$dst_domain/
 
 if [ ! -e $dst_dir ]; then 
+  echo "Missing folder $dst_dir"
   exit 1
 fi
 
 # sign the remote domain certificate
-echo fetching key $remote_host
-crypto-convert \
+/usr/local/bin/crypto-convert \
   -k $remote_host \
   -t DNS_PUB \
   -p $conf_dir/signpost.pem  \
