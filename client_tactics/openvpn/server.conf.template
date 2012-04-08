@@ -15,7 +15,8 @@ comp-lzo
 user nobody
 group nobody
 persist-key
-persist-tun
+# mode tap
+persist-tap
 status openvpn-status.log
 verb 6
 writepid $tmp_dir$/$domain$/server.pid

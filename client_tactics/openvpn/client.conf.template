@@ -1,5 +1,5 @@
 client
-dev tun$dev_id$
+dev tap$dev_id$
 proto udp
 remote $ip$ $port$
 # daemon
@@ -7,6 +7,7 @@ remote $ip$ $port$
 resolv-retry infinite
 nobind
 
+# mode tap
 persist-key
 persist-tun
 pull
