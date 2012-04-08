@@ -25,7 +25,7 @@ fi
 openssl genrsa -out $dst_dir/vpn.pem 2048
 
 # self sign key
-crypto-convert \
+/usr/local/bin/crypto-convert \
   -k $conf_dir/signpost.pem \
   -t PEM_PRIV \
   -p $conf_dir/signpost.pem  \
@@ -37,7 +37,7 @@ crypto-convert \
   -K $dst_dir/tmp.crt
 
 # sign the vpn key
-crypto-convert \
+/usr/local/bin/crypto-convert \
   -k $dst_dir/vpn.pem \
   -t PEM_PRIV \
   -p $conf_dir/signpost.pem  \
@@ -49,8 +49,7 @@ crypto-convert \
   -K $dst_dir/vpn.crt
 
 # sign the remote domain certificate
-echo fetching key $remote_host
-crypto-convert \
+/usr/local/bin/crypto-convert \
   -k $remote_host \
   -t DNS_PUB \
   -p $conf_dir/signpost.pem  \
@@ -66,15 +65,18 @@ cat $dst_dir/tmp.crt $dst_dir/allowed-*.crt > $dst_dir/ca.crt
 
 tmp_dir=`echo $tmp_dir  | sed -e 's/\//\\\\\//g' `
 
-cat client_tactics/openvpn/server.conf.template | sed \
+cat $conf_dir/../client_tactics/openvpn/server.conf.template | sed \
    -e "s/\\\$port\\\$/$port/g" \
-   -e "s/\\\$domain\\\$/$remote_host/g" \
+   -e "s/\\\$domain\\\$/$dst_domain/g" \
    -e "s/\\\$tmp_dir\\\$/$tmp_dir/g" \
    -e "s/\\\$dev_id\\\$/$dev_id/g" > $dst_dir/server.conf
 
-cat client_tactics/openvpn/client.conf.template |\
+cat $conf_dir/../client_tactics/openvpn/client.conf.template |\
    sed -e "s/\\\$port\\\$/$port/g"\
    -e "s/\\\$dev_id\\\$/$dev_id/g" \
-   -e "s/\\\$domain\\\$/$remote_host/g" \
+   -e "s/\\\$domain\\\$/$dst_domain/g" \
    -e "s/\\\$tmp_dir\\\$/$tmp_dir/g" \
    -e "s/\\\$ip\\\$/$remote_ip/g" > $dst_dir/client.conf
+
+chmod a+x $dst_dir
+chmod -R a+rw $dst_dir

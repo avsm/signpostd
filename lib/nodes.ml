@@ -189,7 +189,7 @@ let set_local_ips name local_ips =
 
 let discover_local_ips ?(dev="") () =
   let ip_stream = (Unix.open_process_in
-  (Unix.getcwd () ^ "/client_tactics/get_local_ips " ^ dev)) in
+  (Config.dir ^ "/client_tactics/get_local_ips " ^ dev)) in
   let buf = String.make 1500 ' ' in
   let len = input ip_stream buf 0 1500 in
   let ips = Re_str.split (Re_str.regexp " ") (String.sub buf 0 (len-1)) in
