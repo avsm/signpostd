@@ -162,5 +162,6 @@ let _ =
     client_t (); 
     signal_t ~port:!node_port;
     dns_t ();
+    Sp_controller.listen ();
   ] in
   Lwt_main.run daemon_t
