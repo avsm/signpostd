@@ -4,3 +4,6 @@ Bitstring.t * Ofpacket.datapath_id) -> unit Lwt.t) -> unit
 
 (* setup a listening openflow controller *)
 val listen : ?port:int -> unit -> unit Lwt.t
+
+val add_dev : string -> string -> string -> unit Lwt.t
+val del_dev : string -> string -> string -> unit Lwt.t

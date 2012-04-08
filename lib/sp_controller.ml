@@ -67,6 +67,21 @@ let datapath_join_cb controller dpid evt =
   switch_data.dpid <- switch_data.dpid @ [dp];
   return (pp "+ datapath:0x%012Lx\n" dp)
 
+let port_status_cb controller dpid evt =
+  let _ = 
+    match evt with
+      | OE.Port_status (OP.Port.ADD, port, dpid) -> 
+          pp "[openflow] device added %s %d\n%!" port.OP.Port.name port.OP.Port.port_id;
+          Net_cache.Dev_cache.add_dev port.OP.Port.name port.OP.Port.port_id
+      | OE.Port_status (OP.Port.DEL, port, dpid) -> 
+          pp "[openflow] device removed %s %d\n%!" port.OP.Port.name port.OP.Port.port_id;
+          Net_cache.Dev_cache.del_dev port.OP.Port.name
+      | OE.Port_status (OP.Port.MOD, port, dpid) -> 
+          pp "[openflow] device modilfied %s %d\n%!" port.OP.Port.name port.OP.Port.port_id
+      | _ -> invalid_arg "bogus datapath_join event match!" 
+  in
+    return ()
+
 let req_count = (ref 0)
 
 let add_entry_in_hashtbl mac_cache ix in_port = 
@@ -118,25 +133,38 @@ let init controller =
   pp "test controller register datapath cb\n";
   OC.register_cb controller OE.DATAPATH_JOIN datapath_join_cb;
   pp "test controller register packet_in cb\n";
-  OC.register_cb controller OE.PACKET_IN packet_in_cb
+  OC.register_cb controller OE.PACKET_IN packet_in_cb;
+  pp "test controller register port_stat cb\n";
+  OC.register_cb controller OE.PORT_STATUS_CHANGE port_status_cb
+
+let add_dev dev ip netmask =
+  lwt _ = Lwt_unix.system ("ovs-vsctl --db=unix:/var/run/ovsdb-server "^
+                           " add-port br0 " ^ dev) in 
+  lwt _ = Lwt_unix.system (Printf.sprintf "ip addr add %s/%s dev br0" ip netmask) in
+  return ()
+
+let del_dev dev ip netmask =
+  lwt _ = Lwt_unix.system ("ovs-vsctl --db=unix:/var/run/ovsdb-server "^
+                           " del-port br0 " ^ dev) in 
+  lwt _ = Lwt_unix.system (Printf.sprintf "ip addr del %s/%s dev br0" ip netmask) in
+  return ()
 
 let listen ?(port = 6633) () =
   try_lwt 
     let sock = Lwt_unix.socket Lwt_unix.PF_INET Lwt_unix.SOCK_STREAM 0 in
     lwt hostinfo = Lwt_unix.gethostbyname "localhost" in
-    let _ = Printf.printf "Starting switch...\n%!" in 
+    let _ = Printf.printf "[openflow] Starting switch...\n%!" in 
     let server_address = hostinfo.Lwt_unix.h_addr_list.(0) in
       Lwt_unix.bind sock (Lwt_unix.ADDR_INET (server_address, port)); 
       Lwt_unix.listen sock 10; 
       Lwt_unix.setsockopt sock Unix.SO_REUSEADDR true;
-      lwt () = Lwt_io.printl "Waiting for controller..." in 
+      let _ = Printf.printf "[openflow] Waiting for controller...\n%!" in 
       while_lwt true do 
         lwt (fd, sockaddr) = Lwt_unix.accept sock in
           match sockaddr with
             | ADDR_INET (dst, port) ->
-              lwt () = Lwt_io.printl (Printf.sprintf 
-                                        "Received a connection %s:%d"
-                                      (Unix.string_of_inet_addr dst) port ) in
+                let _ = Printf.printf "[openflow] Received a connection %s:%d\n%!"
+                                      (Unix.string_of_inet_addr dst) port  in
                 let ip = 
                   match (Nettypes.ipv4_addr_of_string (Unix.string_of_inet_addr dst)) with
                     | None -> invalid_arg "dest ip is Invalid"
@@ -149,4 +177,4 @@ let listen ?(port = 6633) () =
       done
     with
       | e ->
-          return (Printf.eprintf "Unexpected exception : %s" (Printexc.to_string e))
+          return (Printf.eprintf "Unexpected exception : %s\n%!" (Printexc.to_string e))
