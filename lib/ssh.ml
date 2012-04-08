@@ -159,13 +159,23 @@ module Manager = struct
    *******************************************************************)
 
   let setup_dev dev_id ip =
+    let dev = Printf.sprintf "tap%d" dev_id in 
     lwt _ = Lwt_unix.system 
-              (Printf.sprintf "tunctl -t tap%d" dev_id) in
+              (Printf.sprintf "tunctl -t %s" dev) in
     lwt _ = Lwt_unix.system 
               (Printf.sprintf "ifconfig tap%d up" dev_id) in
-    lwt _ = Lwt_unix.system 
+    lwt _ = Sp_controller.add_dev dev ip "24" in
+    let _ = Net_cache.Routing.add_next_hop (Uri_IP.string_to_ipv4 ip) 0xffffff00l 0l dev in 
+    let ip_stream = (Unix.open_process_in
+                       (Config.dir ^ "/client_tactics/get_local_device " ^ dev)) in
+    let record = input_line ip_stream in 
+    let ips = Re_str.split (Re_str.regexp " ") record in
+    let dev::mac::_ = ips in 
+      Net_cache.Switching.add_entry (Net_cache.Switching.mac_of_string mac) 
+         (Uri_IP.string_to_ipv4 ip) dev Net_cache.Switching.ETH;
+(*    lwt _ = Lwt_unix.system 
               (Printf.sprintf "ifconfig tap%d %s netmask 255.255.255.0" 
-                 dev_id ip) in
+                 dev_id ip) in*)
       return (ip)
 
   let server_add_client domain dev_id = 
