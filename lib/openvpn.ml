@@ -286,7 +286,7 @@ module Manager = struct
                            return(dev_id) ) 
         in
         let ip = Nodes.discover_local_ips  
-          ~dev:("tun"^(string_of_int dev_id)) () in 
+          ~dev:("tap"^(string_of_int dev_id)) () in 
         return ((List.hd ip))
       with e -> 
         eprintf "[openvpn] server error: %s\n%!" (Printexc.to_string e); 
@@ -304,7 +304,7 @@ module Manager = struct
                      pid;dev_id; nodes=[node^ "." ^ Config.domain];};
         
         let ip = Nodes.discover_local_ips 
-                         ~dev:("tun"^(string_of_int dev_id)) () in
+                         ~dev:("tap"^(string_of_int dev_id)) () in
         return ((List.hd ip))       
       with ex ->
         raise(OpenVpnError(Printexc.to_string ex)))
