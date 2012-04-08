@@ -1,6 +1,6 @@
 port $port$
 proto udp
-dev tun$dev_id$
+dev tap$dev_id$
 # daemon 
 
 ca $tmp_dir$/$domain$/ca.crt
@@ -16,7 +16,7 @@ user nobody
 group nobody
 persist-key
 # mode tap
-persist-tap
+persist-tun
 status openvpn-status.log
 verb 6
 writepid $tmp_dir$/$domain$/server.pid
