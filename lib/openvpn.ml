@@ -115,7 +115,6 @@ module Manager = struct
       let port = (int_of_string (List.hd args)) in 
       let _ = run_server port in
         return ("OK"))
-
     (* code to stop the udp echo server*)
     | "server_stop" -> (
       Printf.printf "[openvpn] stoping server...\n%!";
@@ -291,6 +290,7 @@ module Manager = struct
                     conn.nodes <- conn.nodes @ [(node ^ "." ^ Config.domain)];
                     (* restart server *)
                     Unix.kill conn.pid Sys.sigusr1;
+                    lwt _ = Lwt_unix.sleep 4.0 in      
                     return (conn.dev_id)
                 )
             ) else (
@@ -308,7 +308,7 @@ module Manager = struct
                            return(dev_id) ) 
         in
         let ip = Nodes.discover_local_ips  
-          ~dev:("tun"^(string_of_int dev_id)) () in 
+          ~dev:("tap"^(string_of_int dev_id)) () in 
         return ((List.hd ip))
       with e -> 
         eprintf "[openvpn] server error: %s\n%!" (Printexc.to_string e); 
@@ -326,7 +326,7 @@ module Manager = struct
                      pid;dev_id; nodes=[node^ "." ^ Config.domain];};
         
         let ip = Nodes.discover_local_ips 
-                         ~dev:("tun"^(string_of_int dev_id)) () in
+                         ~dev:("tap"^(string_of_int dev_id)) () in
         return ((List.hd ip))       
       with ex ->
         raise(OpenVpnError(Printexc.to_string ex)))
