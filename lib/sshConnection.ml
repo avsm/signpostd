@@ -173,7 +173,6 @@ let handle_request action method_name arg_list =
             return(Sp.ResponseValue ip)
         with ex ->  
           return(Sp.ResponseError (Printexc.to_string ex)) )
-
       | CONNECT ->
           (try 
              lwt ip = Ssh.Manager.connect method_name arg_list in
