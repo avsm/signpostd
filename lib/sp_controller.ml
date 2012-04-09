@@ -1,5 +1,6 @@
 (*
  * Copyright (c) 2005-2012 Anil Madhavapeddy <anil@recoil.org>
+ *                         Charalampos Rotsos <cr409@cl.cam.ac.uk>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -43,6 +44,8 @@ type switch_state = {
   mutable dpid: OP.datapath_id list;
   mutable of_ctrl: OC.state list;
   mutable pkt_in_cb_cache : pkt_in_cb_struct list;
+  cb_register : (OP.Match.t, (Controller.state -> OP.datapath_id -> 
+                   OE.e -> unit Lwt.t) ) Hashtbl.t;
 }
 
 let resolve t = Lwt.on_success t (fun _ -> ())
@@ -53,10 +56,8 @@ let switch_data = { mac_cache = Hashtbl.create 0;
                     dpid = []; 
                     of_ctrl = [];
                     pkt_in_cb_cache = [];
+                    cb_register = (Hashtbl.create 64);
                   } 
-
-let register_pkt_in_cb flow_match cb = 
-  ()
 
 let datapath_join_cb controller dpid evt =
   let dp = 
@@ -84,22 +85,21 @@ let port_status_cb controller dpid evt =
 
 let req_count = (ref 0)
 
+let register_handler flow cb = 
+  if (Hashtbl.mem switch_data.cb_register flow) then (
+    Hashtbl.remove switch_data.cb_register flow;
+    Hashtbl.add switch_data.cb_register flow cb
+  ) else 
+    Hashtbl.add switch_data.cb_register flow cb
+
+
 let add_entry_in_hashtbl mac_cache ix in_port = 
   if not (Hashtbl.mem mac_cache ix ) then
       Hashtbl.add mac_cache ix in_port
   else  
       Hashtbl.replace mac_cache ix in_port 
 
-let packet_in_cb controller dpid evt =
-incr req_count;
-  let (in_port, buffer_id, data, dp) = 
-    match evt with
-      | OE.Packet_in (inp, buf, dat, dp) -> (inp, buf, dat, dp)
-      | _ -> invalid_arg "bogus datapath_join event match!"
-  in
-  (* Parse Ethernet header *)
-  let m = OP.Match.parse_from_raw_packet in_port data in 
-
+let switch_packet_in_cb controller dpid buffer_id m data in_port =
   (* save src mac address *)
   let ix = m.OP.Match.dl_src in
     add_entry_in_hashtbl switch_data.mac_cache ix in_port;
@@ -126,6 +126,39 @@ incr req_count;
         let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
           OC.send_of_data controller dpid bs
       )
+
+let lookup_flow of_match =
+  (* Check the wilcard card table *)
+  let ret_lst = ref [] in 
+  let lookup_flow flow entry =
+    if (OP.Match.flow_match_compare of_match flow
+          flow.OP.Match.wildcards) then (
+            Printf.printf "[openflow] Found callback for %s \n%!"
+              (OP.Match.match_to_string of_match);
+            ret_lst := (!ret_lst) @ [entry]
+          )
+  in
+    Hashtbl.iter lookup_flow switch_data.cb_register;
+    if (List.length (!ret_lst) == 0) then 
+      None
+    else ( 
+      Printf.printf "[openflow] Found callback for %s\n%!"
+        (OP.Match.match_to_string of_match);
+      Some(List.hd (!ret_lst))
+    )
+
+let packet_in_cb controller dpid evt =
+  incr req_count;
+  let (in_port, buffer_id, data, dp) = 
+    match evt with
+      | OE.Packet_in (inp, buf, dat, dp) -> (inp, buf, dat, dp)
+      | _ -> invalid_arg "bogus datapath_join event match!"
+  in
+  (* Parse Ethernet header *)
+  let m = OP.Match.parse_from_raw_packet in_port data in 
+    match (lookup_flow m) with
+      | Some (cb) -> cb controller dpid evt
+      | None -> switch_packet_in_cb controller dpid  buffer_id m data in_port
 
 let init controller = 
   if (not (List.mem controller switch_data.of_ctrl)) then
