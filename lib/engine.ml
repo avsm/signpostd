@@ -22,7 +22,7 @@ open Printf
 let tactics = [
 (*  (module DirectConnection : Sp.TacticSig); *)
   (module OpenvpnConnection : Sp.TacticSig);
-(*  (module PrivoxyConnection : Sp.TacticSig); *)
+  (module PrivoxyConnection : Sp.TacticSig); 
   (module SshConnection : Sp.TacticSig);
   ]
 

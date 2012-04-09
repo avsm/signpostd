@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
 
-ifconfig -a | grep HWaddr | awk '{split($3,a,":"); print $1,$5,a[2];}'
+ifconfig -a $1 | grep HWaddr | awk '{split($3,a,":"); print $1,$5,a[2];}'

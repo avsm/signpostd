@@ -25,6 +25,23 @@ exception Privoxy_error
 
 let name () = "privoxy"
 
+(******************************************************
+ * connection method
+ ******************************************************)
+let connect a b =
+  (* Trying to see if connectivity is possible *)
+  eprintf "[proxy] enabling between privoxy on %s \n%!" a;
+  let rpc = (Rpc.create_tactic_request "privoxy" 
+               Rpc.CONNECT "forward" []) in
+    try
+      lwt res = (Nodes.send_blocking a rpc) in 
+        return ()
+    with exn -> 
+      Printf.printf "[proxy] client fail %s\n%!" a;
+      raise Privoxy_error
+        return ()
+  
+
 (* ******************************************
  * A tactic to forward all traffic to the privoxy proxy
  * ******************************************)
@@ -33,20 +50,19 @@ let handle_request action method_name arg_list =
   let open Rpc in
   match action with
   | TEST ->
-      eprintf "Privoxy doesn't support test action\n%!";
+      eprintf "[privoxy] doesn't support test action\n%!";
       return(Sp.ResponseError "Privoxy test is not supported yet")
   | CONNECT ->
-      eprintf "Privoxy doesn't support conect action\n%!";
-      return(Sp.ResponseError "Privoxy connect is not supported yet")            
+      (try 
+         lwt ip = Privoxy.Manager.connect method_name arg_list in
+            return(Sp.ResponseValue ip)            
+       with e -> 
+         return (Sp.ResponseError "provxy_connect"))            
   | TEARDOWN ->
-      eprintf "Privoxy doesn't support teardown action\n%!";
+      eprintf "[privoxy] doesn't support teardown action\n%!";
       return(Sp.ResponseError "Privoxy teardown is not supported yet")
 
 let handle_notification action method_name arg_list =
   eprintf "Privoxy tactic doesn't handle notifications\n%!";
   return ()
 
-
-let connect a b =
-  Printf.eprintf "[privoxy] connecting %s -> %s" a b; 
-  return ()
