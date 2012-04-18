@@ -60,13 +60,17 @@ let switch_data = { mac_cache = Hashtbl.create 0;
                   } 
 
 let datapath_join_cb controller dpid evt =
-  let dp = 
+  let (ports, dp) = 
     match evt with
-      | OE.Datapath_join c -> c
+      | OE.Datapath_join (ports, c) -> (ports, c)
       | _ -> invalid_arg "bogus datapath_join event match!" 
   in
+    Printf.printf "received %d ports\n%!" (List.length ports);
+    List.iter ( fun port -> 
+                    Net_cache.Dev_cache.add_dev port.OP.Port.name port.OP.Port.port_id
+    ) ports;
   switch_data.dpid <- switch_data.dpid @ [dp];
-  return (pp "+ datapath:0x%012Lx\n" dp)
+  return (pp "+ datapath:0x%012Lx\n%!" dp)
 
 let port_status_cb controller dpid evt =
   let _ = 
@@ -102,7 +106,14 @@ let add_entry_in_hashtbl mac_cache ix in_port =
 let switch_packet_in_cb controller dpid buffer_id m data in_port =
   (* save src mac address *)
   let ix = m.OP.Match.dl_src in
+  let dev = match (Net_cache.Dev_cache.port_id_to_dev 
+                     (OP.Port.int_of_port m.OP.Match.in_port)) with
+    | None -> "br0"
+    | Some(dev) -> dev
+  in 
     add_entry_in_hashtbl switch_data.mac_cache ix in_port;
+    Net_cache.Switching.add_entry m.OP.Match.dl_src m.OP.Match.nw_src
+      dev Net_cache.Switching.ETH;
  
   (* check if I know the output port in order to define what type of message
    * we need to send *)
@@ -204,7 +215,8 @@ let listen ?(port = 6633) () =
                 let _ = Printf.printf "[openflow] Received a connection %s:%d\n%!"
                                       (Unix.string_of_inet_addr dst) port  in
                 let ip = 
-                  match (Nettypes.ipv4_addr_of_string (Unix.string_of_inet_addr dst)) with
+                  match (Nettypes.ipv4_addr_of_string 
+                           (Unix.string_of_inet_addr dst)) with
                     | None -> invalid_arg "dest ip is Invalid"
                     | Some(ip) -> ip
                 in

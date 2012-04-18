@@ -33,6 +33,7 @@ module Switching: sig
   val mac_of_string : string -> string
   val add_entry : string -> int32 -> string -> dev_typ -> unit
   val mac_of_ip : string ->  (int32 * string * dev_typ) option
+  val port_of_mac : string -> string option
   val ip_of_mac : int32 ->  (string * string * dev_typ) option
 end
 
@@ -40,4 +41,5 @@ module Dev_cache : sig
   val add_dev : string -> int -> unit
   val del_dev : string -> unit
   val dev_to_port_id : string -> int option
+  val port_id_to_dev : int -> string option
 end

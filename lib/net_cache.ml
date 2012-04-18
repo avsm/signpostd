@@ -158,7 +158,7 @@ module Switching = struct
         parse_mac entries
 
   let add_entry mac ip dev_id typ =
-   Printf.printf "adding entry %s %s %s %s \n%!" 
+   Printf.printf "[net_cache-switching] adding entry %s %s %s %s \n%!" 
       (string_of_mac mac) (Uri_IP.ipv4_to_string ip)
       dev_id (string_of_dev_type typ); 
     let entry=ref {mac;ip;time=(Sys.time ()); dev_id; typ} in
@@ -264,12 +264,20 @@ module Switching = struct
         Some(((!entry).mac, (!entry).dev_id, (!entry).typ))
         else
           None
+
+  let port_of_mac mac = 
+    if (Hashtbl.mem switch_tbl.mac_tbl mac) then 
+      let entry = Hashtbl.find switch_tbl.mac_tbl mac in 
+        Some((!entry).dev_id)
+        else
+          None
 end
 
 module Dev_cache = struct
   let dev_cache = Hashtbl.create 64 
 
-  let add_dev dev port_id = 
+  let add_dev dev port_id =
+    Printf.printf "[dev_cahce] adding device %s as port %d\n%!" dev port_id;
     if (Hashtbl.mem dev_cache dev) then (
       Hashtbl.remove dev_cache dev;
       Hashtbl.add dev_cache dev port_id
@@ -284,4 +292,11 @@ module Dev_cache = struct
       Some(Hashtbl.find dev_cache dev )
     else 
       None
+  let port_id_to_dev port_id = 
+    let ret = ref None in 
+      Hashtbl.iter (fun a b -> 
+                      if (b = port_id) then 
+                        ret := Some(a)
+      ) dev_cache;
+      (!ret)
 end
