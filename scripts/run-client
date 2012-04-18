@@ -3,7 +3,7 @@ set -ex
 
 NS=`cat lib/config.ml | grep external_ip | awk '{print $4}' | sed 's/"//g'`
 IODINE_DOMAIN="i.d2.signpo.st"
-NS="10.10.0.1"
+NS="10.20.0.1"
 
 PASS=`cat scripts/PASSWD`
 if [ "`ps -e | grep iodine | wc -l `" -lt 2 ]; then
@@ -25,4 +25,8 @@ else
     fi
 fi
 SIG_PORT=42425
+
+# delete all arp entries, so that we will discover them using openflow
+arp -n | awk '/(^[0-9]+\.?)+/ {print $1;}' | xargs -I '{}' arp -d '{}'
+
 ./client.native `hostname -s` $IP $SIG_PORT
