@@ -20,7 +20,7 @@ module Routing : sig
   val load_routing_table: unit -> unit Lwt.t
   val get_next_hop: int32 -> (int32 * int32 * string)
   val add_next_hop: int32 -> int32 -> int32 -> string -> unit
-
+  val string_rev : string -> string
 end
 
 module Switching: sig

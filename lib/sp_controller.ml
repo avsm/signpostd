@@ -133,8 +133,10 @@ let lookup_flow of_match =
   let lookup_flow flow entry =
     if (OP.Match.flow_match_compare of_match flow
           flow.OP.Match.wildcards) then (
+(*
             Printf.printf "[openflow] Found callback for %s \n%!"
               (OP.Match.match_to_string of_match);
+ *)
             ret_lst := (!ret_lst) @ [entry]
           )
   in
@@ -142,8 +144,10 @@ let lookup_flow of_match =
     if (List.length (!ret_lst) == 0) then 
       None
     else ( 
+(*
       Printf.printf "[openflow] Found callback for %s\n%!"
         (OP.Match.match_to_string of_match);
+ *)
       Some(List.hd (!ret_lst))
     )
 
@@ -185,6 +189,7 @@ let del_dev dev ip netmask =
 let listen ?(port = 6633) () =
   try_lwt 
     let sock = Lwt_unix.socket Lwt_unix.PF_INET Lwt_unix.SOCK_STREAM 0 in
+    let _ = Lwt_unix.setsockopt sock Unix.SO_REUSEADDR true in 
     lwt hostinfo = Lwt_unix.gethostbyname "localhost" in
     let _ = Printf.printf "[openflow] Starting switch...\n%!" in 
     let server_address = hostinfo.Lwt_unix.h_addr_list.(0) in
@@ -211,3 +216,5 @@ let listen ?(port = 6633) () =
     with
       | e ->
           return (Printf.eprintf "Unexpected exception : %s\n%!" (Printexc.to_string e))
+
+

@@ -158,9 +158,9 @@ module Switching = struct
         parse_mac entries
 
   let add_entry mac ip dev_id typ =
- (*   Printf.printf "adding entry %s %s %s %s \n%!" 
+   Printf.printf "adding entry %s %s %s %s \n%!" 
       (string_of_mac mac) (Uri_IP.ipv4_to_string ip)
-      dev_id (string_of_dev_type typ); *)
+      dev_id (string_of_dev_type typ); 
     let entry=ref {mac;ip;time=(Sys.time ()); dev_id; typ} in
     let _ = 
       if (Hashtbl.mem  switch_tbl.ip_tbl ip) then (
@@ -229,6 +229,25 @@ module Switching = struct
             read_ip ip_stream
       with End_of_file -> ()
     in 
+
+    (* reading arp cache *)
+    let route = open_in "/proc/net/arp" in
+    let rec read_arp_cache ip_stream = 
+      try 
+        let ips = Re_str.split (Re_str.regexp "[ ]+") (input_line ip_stream) in
+        let dev =List.nth ips 5 in 
+        let ip = Uri_IP.string_to_ipv4 (List.nth ips 0) in
+        let mac = mac_of_string (List.nth ips 3) in
+           Printf.printf "%s %s %s \n%!" (string_of_mac mac) dev 
+             (Uri_IP.ipv4_to_string ip); 
+           add_entry mac ip dev ETH;
+           read_arp_cache ip_stream
+      with 
+          End_of_file -> ()
+    in 
+    let _ = input_line route in 
+    let _ = read_arp_cache route in 
+    let _ = close_in_noerr route in 
       return (read_ip ip_stream)
 
 

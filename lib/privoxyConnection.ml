@@ -53,7 +53,8 @@ let handle_request action method_name arg_list =
       eprintf "[privoxy] doesn't support test action\n%!";
       return(Sp.ResponseError "Privoxy test is not supported yet")
   | CONNECT ->
-      (try 
+      (try
+         printf "[privoxy] executing connect command\n%!";
          lwt ip = Privoxy.Manager.connect method_name arg_list in
             return(Sp.ResponseValue ip)            
        with e -> 
