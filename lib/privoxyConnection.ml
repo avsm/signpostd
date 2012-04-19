@@ -32,8 +32,11 @@ let connect a b =
   (* Trying to see if connectivity is possible *)
   eprintf "[proxy] enabling between privoxy on %s \n%!" a;
   let rpc = (Rpc.create_tactic_request "privoxy" 
-               Rpc.CONNECT "forward" []) in
+               Rpc.CONNECT "start" []) in
     try
+      lwt res = (Nodes.send_blocking a rpc) in 
+      let rpc = (Rpc.create_tactic_request "privoxy" 
+                   Rpc.CONNECT "forward" []) in
       lwt res = (Nodes.send_blocking a rpc) in 
         return ()
     with exn -> 
