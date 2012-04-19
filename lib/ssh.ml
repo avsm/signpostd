@@ -172,7 +172,7 @@ module Manager = struct
     let ips = Re_str.split (Re_str.regexp " ") record in
     let dev::mac::_ = ips in 
       Net_cache.Switching.add_entry (Net_cache.Switching.mac_of_string mac) 
-         (Uri_IP.string_to_ipv4 ip) dev Net_cache.Switching.ETH;
+         (Some(Uri_IP.string_to_ipv4 ip)) dev Net_cache.Switching.ETH;
 (*    lwt _ = Lwt_unix.system 
               (Printf.sprintf "ifconfig tap%d %s netmask 255.255.255.0" 
                  dev_id ip) in*)
