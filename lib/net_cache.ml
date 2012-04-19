@@ -28,6 +28,7 @@ module Routing = struct
     ip: int32;
     mask : int32;
     gw : int32;
+    (* this is a bit useless, as the device will usually be br0 *)
     dev_id : string;
   }
 
@@ -126,7 +127,10 @@ module Switching = struct
 
   type t = {
     mac : string;
-    ip : int32;
+    (*TODO: the IP is only interesting for us when it 
+    * is a local ip. Is it possible to have multihoming for the 
+    * same mac address *)
+    ip : int32 option;
     time : float;
     dev_id : string;
     typ : dev_typ;
@@ -158,18 +162,23 @@ module Switching = struct
         parse_mac entries
 
   let add_entry mac ip dev_id typ =
-   Printf.printf "[net_cache-switching] adding entry %s %s %s %s \n%!" 
-      (string_of_mac mac) (Uri_IP.ipv4_to_string ip)
-      dev_id (string_of_dev_type typ); 
     let entry=ref {mac;ip;time=(Sys.time ()); dev_id; typ} in
     let _ = 
-      if (Hashtbl.mem  switch_tbl.ip_tbl ip) then (
-        Hashtbl.remove switch_tbl.ip_tbl ip;
-        Hashtbl.add switch_tbl.ip_tbl ip entry
-      ) else (
-        Hashtbl.add switch_tbl.ip_tbl ip entry
-      )
-    in
+    match ip with 
+      | None -> 
+          Printf.printf "[net_cache-switching] adding entry %s None %s %s \n%!" 
+            (string_of_mac mac) dev_id (string_of_dev_type typ)
+      | Some(ip) -> 
+          (Printf.printf "[net_cache-switching] adding entry %s %s %s %s \n%!" 
+            (string_of_mac mac) (Uri_IP.ipv4_to_string ip)
+            dev_id (string_of_dev_type typ);
+          if (Hashtbl.mem  switch_tbl.ip_tbl ip) then (
+            Hashtbl.remove switch_tbl.ip_tbl ip;
+            Hashtbl.add switch_tbl.ip_tbl ip entry
+          ) else (
+            Hashtbl.add switch_tbl.ip_tbl ip entry
+          ))
+    in 
     let _ = 
       if (Hashtbl.mem switch_tbl.mac_tbl mac) then (
         Hashtbl.remove switch_tbl.mac_tbl mac;
@@ -222,7 +231,7 @@ module Switching = struct
             if (Hashtbl.mem mac_dev dev) then 
               let (mac, typ) = Hashtbl.find mac_dev dev in 
               let ip = Uri_IP.string_to_ipv4 ip in 
-                add_entry mac ip dev typ
+                add_entry mac (Some(ip)) dev typ
             else 
                   Printf.printf "Failed to find dev %s\n%!" dev
           in 
@@ -240,7 +249,7 @@ module Switching = struct
         let mac = mac_of_string (List.nth ips 3) in
            Printf.printf "%s %s %s \n%!" (string_of_mac mac) dev 
              (Uri_IP.ipv4_to_string ip); 
-           add_entry mac ip dev ETH;
+           add_entry mac (Some(ip)) dev ETH;
            read_arp_cache ip_stream
       with 
           End_of_file -> ()

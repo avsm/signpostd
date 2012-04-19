@@ -31,8 +31,8 @@ module Switching: sig
   val string_of_dev_type : dev_typ -> string
   val string_of_mac : string -> string
   val mac_of_string : string -> string
-  val add_entry : string -> int32 -> string -> dev_typ -> unit
-  val mac_of_ip : string ->  (int32 * string * dev_typ) option
+  val add_entry : string -> int32 option -> string -> dev_typ -> unit
+  val mac_of_ip : string ->  (int32 option * string * dev_typ) option
   val port_of_mac : string -> string option
   val ip_of_mac : int32 ->  (string * string * dev_typ) option
 end

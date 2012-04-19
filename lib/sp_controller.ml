@@ -112,9 +112,16 @@ let switch_packet_in_cb controller dpid buffer_id m data in_port =
     | Some(dev) -> dev
   in 
     add_entry_in_hashtbl switch_data.mac_cache ix in_port;
-    Net_cache.Switching.add_entry m.OP.Match.dl_src m.OP.Match.nw_src
-      dev Net_cache.Switching.ETH;
- 
+    let (_, gw, _) = Net_cache.Routing.get_next_hop m.OP.Match.nw_src in
+    let _ = 
+      if (gw = 0l) then 
+        Net_cache.Switching.add_entry m.OP.Match.dl_src (Some(m.OP.Match.nw_src))
+          dev Net_cache.Switching.ETH
+      else
+         Net_cache.Switching.add_entry m.OP.Match.dl_src None
+          dev Net_cache.Switching.ETH
+    in
+
   (* check if I know the output port in order to define what type of message
    * we need to send *)
     let ix = m.OP.Match.dl_dst in
