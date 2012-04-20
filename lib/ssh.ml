@@ -23,6 +23,8 @@ open Printf
 
 let ssh_port = 10000
 
+module OP = Ofpacket
+
 module Manager = struct
   exception SshError of string
   exception MissingSshArgumentError
@@ -131,7 +133,7 @@ module Manager = struct
   in
     (* Run client test for all remote ips and return the ip that reasponded
     * first *)
-    let sleeper, wakener = Lwt.task () in 
+    let _, wakener = Lwt.task () in 
 (*     lwt _ = Lwt.choose [(Lwt_list.iter_p (send_pkt_to wakener port) ips);
  *     sleeper] in  *)
      lwt _ = (Lwt_list.iter_p (send_pkt_to wakener port) ips) in
@@ -147,9 +149,14 @@ module Manager = struct
 
       (* test tcp connectivity *)
       | "client" -> (
-          let port :: ips = args in 
+          try_lwt
+            let _ :: ips = args in 
             lwt ip = run_client ssh_port ips in
-              return (ip))
+              return (ip)
+          with ex ->
+            Printf.printf "[ssh] failed to start client: %s\n%!" 
+              (Printexc.to_string ex);
+            raise(SshError(Printexc.to_string ex)) )
       | _ -> (
           Printf.printf "Action %s not supported in test" kind;
           return ("OK"))
@@ -171,8 +178,11 @@ module Manager = struct
     let record = input_line ip_stream in 
     let ips = Re_str.split (Re_str.regexp " ") record in
     let dev::mac::_ = ips in 
-      Net_cache.Switching.add_entry (Net_cache.Switching.mac_of_string mac) 
-         (Some(Uri_IP.string_to_ipv4 ip)) dev Net_cache.Switching.ETH;
+      Net_cache.Arp_cache.add_mapping 
+        (Net_cache.Arp_cache.mac_of_string mac) (Uri_IP.string_to_ipv4 ip);
+(*         ) dev Net_cache.Switching.ETH; *)
+        Net_cache.Port_cache.add_mac (Net_cache.Arp_cache.mac_of_string mac)
+        (OP.Port.int_of_port OP.Port.Local );
 (*    lwt _ = Lwt_unix.system 
               (Printf.sprintf "ifconfig tap%d %s netmask 255.255.255.0" 
                  dev_id ip) in*)
@@ -184,7 +194,7 @@ module Manager = struct
     (* Dump keys in authorized_key file *)
     let update_authorized_keys () = 
       let file = open_out "/root/.ssh/signpost_tunnel" in 
-        Hashtbl.iter (fun domain client -> 
+        Hashtbl.iter (fun _ client -> 
                         output_string file (client.s_key ^ "\n") 
         ) conn_db.conns_client; 
         close_out file
@@ -214,7 +224,7 @@ module Manager = struct
     (* Dump keys in authorized_key file *)
     let update_known_hosts () = 
       let file = open_out (Config.conf_dir ^ "/known_hosts") in 
-        Hashtbl.iter (fun domain server ->
+        Hashtbl.iter (fun _ server ->
                       output_string file (
                         Printf.sprintf "[%s]:%d %s\n" 
                           server.ip server.port                    
@@ -244,10 +254,10 @@ module Manager = struct
                  in
                    return ("OK")
 
-  let client_connect server_ip server_port local_dev remote_dev subnet = 
+  let client_connect server_ip server_port local_dev remote_dev _ = 
     let cmd = Unix.getcwd () ^ "/client_tactics/ssh/client" in
     (* TODO: add pid in client state. *)
-    let pid = Unix.create_process cmd [|cmd; Config.conf_dir; server_ip;
+    let _ = Unix.create_process cmd [|cmd; Config.conf_dir; server_ip;
                                         (string_of_int server_port);
                                         local_dev;remote_dev; |] 
                 Unix.stdin Unix.stdout Unix.stderr in
@@ -294,10 +304,10 @@ module Manager = struct
    *             TEARDOWN methods of tactic
    * ***********************************************************************)
 
-  let teardown args =
+  let teardown _ =
     true
 
-  let pkt_in_cb controlleri dpid evt = 
+  let pkt_in_cb _ _ _ = 
     return ()
 
 end

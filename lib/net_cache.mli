@@ -20,9 +20,10 @@ module Routing : sig
   val load_routing_table: unit -> unit Lwt.t
   val get_next_hop: int32 -> (int32 * int32 * string)
   val add_next_hop: int32 -> int32 -> int32 -> string -> unit
-  val string_rev : string -> string
+  val string_rev : string -> string 
 end
 
+(*
 module Switching: sig
   type dev_typ = 
     | ETH
@@ -36,10 +37,25 @@ module Switching: sig
   val port_of_mac : string -> string option
   val ip_of_mac : int32 ->  (string * string * dev_typ) option
 end
+ *)
 
-module Dev_cache : sig
+module Arp_cache : sig
+  val string_of_mac : string -> string
+  val mac_of_string : string -> string
+  val add_mapping : string -> int32 -> unit
+  val mac_of_ip : int32 -> string option
+  val ip_of_mac : string -> int32 option
+  val get_next_hop_mac: int32 -> string option
+  val load_arp : unit -> unit Lwt.t
+end
+
+module Port_cache : sig
   val add_dev : string -> int -> unit
   val del_dev : string -> unit
   val dev_to_port_id : string -> int option
   val port_id_to_dev : int -> string option
+
+  val add_mac: string -> int -> unit
+  val del_mac: string -> unit
+  val port_id_of_mac : string -> int option
 end

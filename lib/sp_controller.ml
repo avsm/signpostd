@@ -59,7 +59,7 @@ let switch_data = { mac_cache = Hashtbl.create 0;
                     cb_register = (Hashtbl.create 64);
                   } 
 
-let datapath_join_cb controller dpid evt =
+let datapath_join_cb _ _ evt =
   let (ports, dp) = 
     match evt with
       | OE.Datapath_join (ports, c) -> (ports, c)
@@ -67,21 +67,21 @@ let datapath_join_cb controller dpid evt =
   in
     Printf.printf "received %d ports\n%!" (List.length ports);
     List.iter ( fun port -> 
-                    Net_cache.Dev_cache.add_dev port.OP.Port.name port.OP.Port.port_id
+                    Net_cache.Port_cache.add_dev port.OP.Port.name port.OP.Port.port_id
     ) ports;
   switch_data.dpid <- switch_data.dpid @ [dp];
   return (pp "+ datapath:0x%012Lx\n%!" dp)
 
-let port_status_cb controller dpid evt =
+let port_status_cb _ _ evt =
   let _ = 
     match evt with
-      | OE.Port_status (OP.Port.ADD, port, dpid) -> 
+      | OE.Port_status (OP.Port.ADD, port, _) -> 
           pp "[openflow] device added %s %d\n%!" port.OP.Port.name port.OP.Port.port_id;
-          Net_cache.Dev_cache.add_dev port.OP.Port.name port.OP.Port.port_id
-      | OE.Port_status (OP.Port.DEL, port, dpid) -> 
+          Net_cache.Port_cache.add_dev port.OP.Port.name port.OP.Port.port_id
+      | OE.Port_status (OP.Port.DEL, port, _) -> 
           pp "[openflow] device removed %s %d\n%!" port.OP.Port.name port.OP.Port.port_id;
-          Net_cache.Dev_cache.del_dev port.OP.Port.name
-      | OE.Port_status (OP.Port.MOD, port, dpid) -> 
+          Net_cache.Port_cache.del_dev port.OP.Port.name
+      | OE.Port_status (OP.Port.MOD, port, _) -> 
           pp "[openflow] device modilfied %s %d\n%!" port.OP.Port.name port.OP.Port.port_id
       | _ -> invalid_arg "bogus datapath_join event match!" 
   in
@@ -106,21 +106,16 @@ let add_entry_in_hashtbl mac_cache ix in_port =
 let switch_packet_in_cb controller dpid buffer_id m data in_port =
   (* save src mac address *)
   let ix = m.OP.Match.dl_src in
-  let dev = match (Net_cache.Dev_cache.port_id_to_dev 
-                     (OP.Port.int_of_port m.OP.Match.in_port)) with
-    | None -> "br0"
-    | Some(dev) -> dev
-  in 
     add_entry_in_hashtbl switch_data.mac_cache ix in_port;
+    Net_cache.Port_cache.add_mac ix (OP.Port.int_of_port in_port);
     let (_, gw, _) = Net_cache.Routing.get_next_hop m.OP.Match.nw_src in
-    let _ = 
+    let _ =
+      (* Add only local devices *)
       if (gw = 0l) then 
-        Net_cache.Switching.add_entry m.OP.Match.dl_src (Some(m.OP.Match.nw_src))
-          dev Net_cache.Switching.ETH
-      else
-         Net_cache.Switching.add_entry m.OP.Match.dl_src None
-          dev Net_cache.Switching.ETH
+        Net_cache.Arp_cache.add_mapping m.OP.Match.dl_src m.OP.Match.nw_src;
     in
+      (* TODO need to write an arp parser in case an arp cache exists in the
+      * network *)
 
   (* check if I know the output port in order to define what type of message
    * we need to send *)
@@ -171,7 +166,7 @@ let lookup_flow of_match =
 
 let packet_in_cb controller dpid evt =
   incr req_count;
-  let (in_port, buffer_id, data, dp) = 
+  let (in_port, buffer_id, data, _) = 
     match evt with
       | OE.Packet_in (inp, buf, dat, dp) -> (inp, buf, dat, dp)
       | _ -> invalid_arg "bogus datapath_join event match!"

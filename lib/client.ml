@@ -55,7 +55,7 @@ let bind_ns_fd () =
       Lwt_unix.bind sp_fd src;)
     else ()
 
-let forward_dns_query_to_ns packet q = 
+let forward_dns_query_to_ns packet _ = 
   let open Dns.Packet in
   let module DQ = Dns.Query in
   (* Normalise the domain names to lower case *)
@@ -73,7 +73,7 @@ let forward_dns_query_to_ns packet q =
                      additional=(reply.Dns.Packet.additionals);}) in
     return (Some(q_reply))
 
-let forward_dns_query_to_sp packet q = 
+let forward_dns_query_to_sp _ q = 
   let module DP = Dns.Packet in
   let module DQ = Dns.Query in
   (* Normalise the domain names to lower case *)
@@ -155,7 +155,7 @@ let client_t () =
     Printf.printf "loukup 10.20.0.1 -> %s %s %s\n%!" (Uri_IP.ipv4_to_string ip) 
       (Uri_IP.ipv4_to_string gw) dev;
  *)
-    lwt _ = Net_cache.Switching.load_arp () in
+    lwt _ = Net_cache.Arp_cache.load_arp () in
 (*
   let ret = Net_cache.Switching.mac_of_ip (Net_cache.Switching.mac_of_string "08:00:27:9f:bc:b6") in 
   let _ = 

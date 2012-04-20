@@ -17,6 +17,8 @@
 open Lwt
 open Printf
 
+module OP = Ofpacket
+
 module Routing = struct
 
   (* Iface   Destination     Gateway         Flags   RefCnt  Use     Metric
@@ -113,6 +115,166 @@ module Routing = struct
       ()
 end
 
+
+module Port_cache = struct
+  let dev_cache = Hashtbl.create 64 
+
+  (* Maybe I need here an additional field to define a datapath id*)
+  let mac_cache = Hashtbl.create 64
+
+  let string_of_mac = function
+    | "" -> ""
+    | mac ->
+        let ret = ref "" in 
+        String.iter (fun a -> ret := Printf.sprintf 
+                          "%s%02x:" !ret (int_of_char a)) mac; 
+    String.sub (!ret) 0 ((String.length !ret) - 1)
+
+  let add_dev dev port_id =
+    Printf.printf "[dev_cahce] adding device %s as port %d\n%!" dev port_id;
+    if (Hashtbl.mem dev_cache dev) then (
+      Hashtbl.remove dev_cache dev;
+      Hashtbl.add dev_cache dev port_id
+    ) else
+      Hashtbl.add dev_cache dev port_id
+
+  let del_dev dev =
+    Hashtbl.remove dev_cache dev
+
+  let dev_to_port_id dev =
+    if (Hashtbl.mem dev_cache dev) then
+      Some(Hashtbl.find dev_cache dev )
+    else 
+      None
+  let port_id_to_dev port_id = 
+    let ret = ref None in 
+      Hashtbl.iter (fun a b -> 
+                      if (b = port_id) then 
+                        ret := Some(a)
+      ) dev_cache;
+      (!ret)
+
+  let add_mac mac port_id = 
+    Printf.printf "[dev_cahce] adding device %s on port %d\n%!" 
+      (string_of_mac mac) port_id;
+    if (Hashtbl.mem mac_cache mac) then (
+      Hashtbl.remove mac_cache mac;
+      Hashtbl.add mac_cache mac port_id
+    ) else
+      Hashtbl.add mac_cache mac port_id
+
+  let del_mac mac = 
+(*
+    Printf.printf "[dev_cahce] removing device %s\n%!" 
+      (Arp_cache.string_of_mac mac);
+ *)
+    if (Hashtbl.mem mac_cache mac) then 
+      Hashtbl.remove mac_cache mac
+
+  let port_id_of_mac mac =
+    Printf.printf "port_id_of_mac %s\n%!" (string_of_mac mac);
+    if(Hashtbl.mem mac_cache mac ) then
+      Some(Hashtbl.find mac_cache mac )
+    else 
+      None
+end
+module Arp_cache = struct 
+  let cache = Hashtbl.create 64
+
+  let add_mapping mac ip = 
+    (* Check if ip addr is local *)
+    let (_,gw,_) = Routing.get_next_hop ip in 
+      match gw with 
+        | 0l -> (
+            if (Hashtbl.mem cache ip) then (
+              Hashtbl.remove cache ip;
+              Hashtbl.add cache ip mac
+            ) else 
+              Hashtbl.add cache ip mac
+          ) 
+        | _ -> Printf.printf "[net_cache] ip %s is not local. ignoring.\n%!"
+                 (Uri_IP.ipv4_to_string ip)
+
+  let string_of_mac = function
+    | "" -> ""
+    | mac ->
+        let ret = ref "" in 
+        String.iter (fun a -> ret := Printf.sprintf 
+                          "%s%02x:" !ret (int_of_char a)) mac; 
+    String.sub (!ret) 0 17
+
+
+  let mac_of_string mac = 
+    let entries = Re_str.split (Re_str.regexp ":") mac in 
+      let rec parse_mac = function
+        | [] -> ""
+        | [b] -> (String.make 1 (char_of_int (int_of_string ("0x"^b))))
+        | b :: r -> ((String.make 1 (char_of_int (int_of_string ("0x"^b)))) ^ 
+                    (parse_mac r))
+      in 
+        parse_mac entries
+
+  let load_arp () =
+    let mac_pat = "[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:" ^
+                  "[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]" in 
+    let mac_regexp = Re_str.regexp mac_pat in 
+    
+      (* reading ip dev mappings *)
+    let ip_stream = (Unix.open_process_in
+                       (Config.dir ^ "/client_tactics/get_local_dev_ip ")) in
+    let rec read_ip ip_stream = 
+      try 
+        let ips = Re_str.split (Re_str.regexp " ") (input_line ip_stream) in 
+        let dev::ip::mac::_ = ips in
+          Printf.printf "%s %s %s\n%!" dev ip mac; 
+          add_mapping (mac_of_string mac) (Uri_IP.string_to_ipv4 ip);
+          Port_cache.add_mac (mac_of_string mac) 
+            (OP.Port.int_of_port OP.Port.Local);
+          read_ip ip_stream
+      with End_of_file -> ()
+    in 
+
+    (* reading arp cache *)
+    let route = open_in "/proc/net/arp" in
+    let rec read_arp_cache ip_stream = 
+      try 
+        let ips = Re_str.split (Re_str.regexp "[ ]+") (input_line ip_stream) in
+        let ip = Uri_IP.string_to_ipv4 (List.nth ips 0) in
+        let mac = mac_of_string (List.nth ips 3) in
+           Printf.printf "%s %s %s \n%!" (string_of_mac mac)  
+             (Uri_IP.ipv4_to_string ip); 
+           add_mapping mac ip;
+           read_arp_cache ip_stream
+      with 
+          End_of_file -> ()
+    in 
+    let _ = input_line route in 
+    let _ = read_arp_cache route in 
+    let _ = close_in_noerr route in 
+      return (read_ip ip_stream)
+
+  let mac_of_ip ip = 
+    match (Hashtbl.mem cache ip) with
+      | true -> Some(Hashtbl.find cache ip)
+      | false -> None
+
+  let ip_of_mac mac = 
+    let ret = ref None in 
+      Hashtbl.iter (fun ip dev -> 
+                      if (dev = mac) then 
+                        ret := Some(ip)
+      ) cache;
+      (!ret)
+    
+  let get_next_hop_mac dst = 
+    let (_, gw, _) = Routing.get_next_hop dst in
+      Printf.printf "looking up for %s\n%!" (Uri_IP.ipv4_to_string gw);
+      match gw with 
+        | 0l -> mac_of_ip dst
+        | ip -> mac_of_ip ip    
+end
+
+(*
 module Switching = struct
   type dev_typ = 
     | ETH
@@ -281,31 +443,5 @@ module Switching = struct
         else
           None
 end
+ *)
 
-module Dev_cache = struct
-  let dev_cache = Hashtbl.create 64 
-
-  let add_dev dev port_id =
-    Printf.printf "[dev_cahce] adding device %s as port %d\n%!" dev port_id;
-    if (Hashtbl.mem dev_cache dev) then (
-      Hashtbl.remove dev_cache dev;
-      Hashtbl.add dev_cache dev port_id
-    ) else
-      Hashtbl.add dev_cache dev port_id
-
-  let del_dev dev =
-    Hashtbl.remove dev_cache dev
-
-  let dev_to_port_id dev =
-    if (Hashtbl.mem dev_cache dev) then
-      Some(Hashtbl.find dev_cache dev )
-    else 
-      None
-  let port_id_to_dev port_id = 
-    let ret = ref None in 
-      Hashtbl.iter (fun a b -> 
-                      if (b = port_id) then 
-                        ret := Some(a)
-      ) dev_cache;
-      (!ret)
-end
