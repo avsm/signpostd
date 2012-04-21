@@ -267,34 +267,54 @@ module Manager = struct
         | (src_port, 80) -> (
           try_lwt
             Printf.printf "[proxy] http traffic found\n%!";
-            let mapping = {src_mac=m.OP.Match.dl_src; dst_mac=m.OP.Match.dl_dst; 
-                           src_ip=m.OP.Match.nw_src; dst_ip = m.OP.Match.nw_dst;
-                           dst_port=80; state=NON_SSL; ssl_state=NO_SSL;
-                           src_isn=0l;dst_isn=0l;data="";} in
-              Hashtbl.add conn_db.http_conns src_port mapping;
-              let (_, gw, _) = Net_cache.Routing.get_next_hop m.OP.Match.nw_dst in
-                Printf.printf "looking up for %s\n%!" (Uri_IP.ipv4_to_string gw);
-                let Some(dst_mac) = 
-                  match gw with 
-                    | 0l -> Net_cache.Arp_cache.mac_of_ip m.OP.Match.nw_dst
-                    | ip -> Net_cache.Arp_cache.mac_of_ip ip 
-                in
-(*                 let Some(dst_mac,_, _ ) = Net_cache.Switching.ip_of_mac gw in
- *                 *)
-                let actions = [
-                  OP.Flow.Set_dl_src(dst_mac);
-                  OP.Flow.Set_dl_dst(m.OP.Match.dl_src);
-                  OP.Flow.Set_nw_dst(m.OP.Match.nw_src);
-                  OP.Flow.Set_nw_src(gw);
-                  OP.Flow.Set_tp_dst(privoxy_port);
-                  OP.Flow.Output((OP.Port.Local), 2000);] in
-                let pkt = OP.Flow_mod.create m 0_L OP.Flow_mod.ADD 
-                            ~buffer_id:(Int32.to_int buffer_id)
-                            actions () in 
-                let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
-                  OC.send_of_data controller dpid bs
-          with ex ->
-            return (Printf.printf "[privoxy] error: %s\n%!" (Printexc.to_string ex))
+            lwt is_privoxy = is_privoxy_conn m.OP.Match.nw_src src_port in
+            match is_privoxy with
+              | true -> (
+                  Printf.printf "[privoxy] a privoxy connection on port %d\n%!" 
+                    src_port;
+                  Printf.printf "Looking up mac %s\n%!" 
+                    (Net_cache.Arp_cache.string_of_mac m.OP.Match.dl_src);
+                  let port_id = match (Net_cache.Port_cache.port_id_of_mac 
+                                         m.OP.Match.dl_dst) with
+                    | Some(port_id) -> OP.Port.port_of_int port_id
+                    | None -> OP.Port.All
+                  in
+                  let pkt = OP.Flow_mod.create m 0_L OP.Flow_mod.ADD 
+                              ~buffer_id:(Int32.to_int buffer_id)
+                              [OP.Flow.Output(port_id, 2000);] 
+                              () in 
+                  let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
+                    OC.send_of_data controller dpid bs
+                )
+              | false -> (
+                  let mapping = {src_mac=m.OP.Match.dl_src; dst_mac=m.OP.Match.dl_dst; 
+                                 src_ip=m.OP.Match.nw_src; dst_ip = m.OP.Match.nw_dst;
+                                 dst_port=80; state=NON_SSL; ssl_state=NO_SSL;
+                                 src_isn=0l;dst_isn=0l;data="";} in
+                    Hashtbl.add conn_db.http_conns src_port mapping;
+                    let (_, gw, _) = Net_cache.Routing.get_next_hop m.OP.Match.nw_dst in
+                      Printf.printf "looking up for %s\n%!" (Uri_IP.ipv4_to_string gw);
+                      let Some(dst_mac) = 
+                        match gw with 
+                          | 0l -> Net_cache.Arp_cache.mac_of_ip m.OP.Match.nw_dst
+                          | ip -> Net_cache.Arp_cache.mac_of_ip ip 
+                      in
+(*                   let Some(dst_mac,_, _ ) = Net_cache.Switching.ip_of_mac gw in
+ *                   *)
+                      let actions = [
+                        OP.Flow.Set_dl_src(dst_mac);
+                        OP.Flow.Set_dl_dst(m.OP.Match.dl_src);
+                        OP.Flow.Set_nw_dst(m.OP.Match.nw_src);
+                        OP.Flow.Set_nw_src(gw);
+                        OP.Flow.Set_tp_dst(privoxy_port);
+                        OP.Flow.Output((OP.Port.Local), 2000);] in
+                      let pkt = OP.Flow_mod.create m 0_L OP.Flow_mod.ADD 
+                                  ~buffer_id:(Int32.to_int buffer_id)
+                                  actions () in 
+                      let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
+                        OC.send_of_data controller dpid bs)
+            with ex ->
+              return (Printf.printf "[privoxy] error: %s\n%!" (Printexc.to_string ex))
 
         )
         | (src_port, 443) -> (
@@ -317,28 +337,11 @@ module Manager = struct
                                   [OP.Flow.Output(port_id, 2000);] 
                                   () in 
                       let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
-(*
-                      lwt _ =  OC.send_of_data controller dpid bs in 
-                      let m = OP.Match.({wildcards=(OP.Wildcards.exact_match);
-                                         in_port=port_id; 
-                                         dl_src=m.OP.Match.dl_dst;
-                                         dl_dst=m.OP.Match.dl_src; 
-                                         dl_vlan=0xffff;dl_vlan_pcp=(char_of_int 0); 
-                                         dl_type=0x0800;
-                                         nw_src=m.OP.Match.nw_dst; 
-                                         nw_dst=m.OP.Match.nw_src;
-                                         nw_tos=(char_of_int 0); nw_proto=(char_of_int 6);
-                                         tp_src=m.OP.Match.tp_dst; 
-                                         tp_dst=m.OP.Match.tp_src}) in 
-                      let pkt = OP.Flow_mod.create m 0_L OP.Flow_mod.ADD 
-                                  ~buffer_id:(Int32.to_int buffer_id)
-                                  [OP.Flow.Output((OP.Port.Local), 2000);] () in 
-                      let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
- *)
                         OC.send_of_data controller dpid bs
 
                     with ex -> 
-                      return (Printf.printf "[privoxy] error: %s\n%!" (Printexc.to_string ex)) )
+                      return (Printf.printf "[privoxy] error: %s\n%!" 
+                                (Printexc.to_string ex)) )
                 | (false, true) -> ( 
                     Printf.printf "[privoxy] non-privoxy established connection %d\n%!" 
                       src_port;
