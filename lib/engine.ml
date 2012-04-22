@@ -23,6 +23,7 @@ let tactics = [
 (*  (module DirectConnection : Sp.TacticSig); *)
   (module OpenvpnConnection : Sp.TacticSig);
   (module PrivoxyConnection : Sp.TacticSig); 
+  (module TorConnection : Sp.TacticSig); 
   (module SshConnection : Sp.TacticSig);
   ]
 
