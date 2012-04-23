@@ -58,7 +58,7 @@ let handle_request action method_name arg_list =
   | CONNECT ->
       (try
          printf "[socks] executing connect command\n%!";
-         lwt ip = Privoxy.Manager.connect method_name arg_list in
+         lwt ip = Tor.Manager.connect method_name arg_list in
             return(Sp.ResponseValue ip)            
        with e -> 
          return (Sp.ResponseError "provxy_connect"))            
