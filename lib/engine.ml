@@ -25,6 +25,7 @@ let tactics = [
   (module PrivoxyConnection : Sp.TacticSig); 
   (module TorConnection : Sp.TacticSig); 
   (module SshConnection : Sp.TacticSig);
+  (module NatpunchConnection : Sp.TacticSig);
   ]
 
 let tactics_not_attempted_or_failed_for a b =
