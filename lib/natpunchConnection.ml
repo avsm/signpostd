@@ -21,7 +21,7 @@ open Printf
 
 exception Nat_error
 
-let name () = "nat"
+let name () = "natpanch"
 
 type natpanch_state_type = {
   listener : unit t;
