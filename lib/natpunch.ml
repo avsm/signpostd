@@ -22,8 +22,8 @@ open Lwt_list
 open Printf
 
 module Manager = struct
-  exception SshError of string
-  exception MissingSshArgumentError
+  exception NatpunchError of string
+  exception MissingNatpunchArgumentError
 
   (*********************************************************
    *                  Tactic state
@@ -44,14 +44,42 @@ module Manager = struct
  * Connection Methods
  * *)
   let connect kind args =
-    return ("127.0.0.1")
+    match kind with
+    | "client" -> 
+      try_lwt
+        let ips = List.nth args 0 in 
+          return ("127.0.0.1")
+      with  exn ->
+        printf "[natpunch] error %s\n%!" (Printexc.to_string exn);
+        return ("127.0.0.1")
+        (*         raise (NatpunchError ((Printexc.to_string exn)))  *)
+(*     | _ -> raise (NatpunchError((sprintf "unsupported %s" kind))) *)
 
   (*********************************************************
    *       Testing methods
    *********************************************************)
-  let test kind args =
-    return ("OK")
+  let connect_client ip port = 
+    let client_sock = socket PF_INET SOCK_STREAM 0 in
+    let hentry = Unix.inet_addr_of_string ip in
+    lwt _ = Lwt_unix.connect client_sock (ADDR_INET (hentry, port)) in 
+      printf "client connected\n%!";
+      return (Lwt_unix.shutdown client_sock SHUTDOWN_ALL)
 
+
+  let test kind args =
+    match kind with 
+    | "client_connect" -> (
+      try_lwt
+        let port = int_of_string (List.hd args) in
+        lwt _ = connect_client Config.external_ip port in 
+          return ("0.0.0.0")
+      with exn -> 
+        printf "[natpunch] error %s\n%!" (Printexc.to_string exn);
+        raise (NatpunchError(Printexc.to_string exn)))
+    | "server_connect" -> 
+      return ("0.0.0.0")
+    | _ ->
+      raise (NatpunchError((sprintf "Invalid match %s" kind)) )
 
   (*************************************************************************
    *             TEARDOWN methods of tactic

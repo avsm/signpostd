@@ -23,7 +23,45 @@ exception Nat_error
 
 let name () = "nat"
 
+type natpanch_state_type = {
+  listener : unit t;
+}
+
+let nat_socket = 11000
+
+let netpanch_daemon () = 
+  printf "[netpanch] Starting intermediate socket..\n%!";
+  let server_sock = Lwt_unix.socket PF_INET SOCK_STREAM 0 in
+  (* so we can restart our server quickly *)
+  Lwt_unix.setsockopt server_sock SO_REUSEADDR true ;
+
+  (* build up my socket address *)
+  bind server_sock (ADDR_INET (Unix.inet_addr_any, nat_socket)) ;
+
+  (* Listen on the socket. Max of 10 incoming connections. *)
+  listen server_sock 10 ;
+
+  (* accept and process connections *)
+  while_lwt true do
+    lwt (client_sock, client_addr) = accept server_sock in
+    let _ = 
+      match client_addr with 
+      | Unix.ADDR_INET(ip, port) -> 
+          printf "[natpanch] client connected %s:%d\n%!"
+          (Unix.string_of_inet_addr ip) port ;
+      | _ -> 
+          printf "[natpanch] invalid host"
+    in
+(*     let x = send client_sock str 0 len [] in *)
+    return (Lwt_unix.shutdown client_sock SHUTDOWN_ALL)
+  done
+
+let test_state = 
+  Lwt.choose [(netpanch_daemon ())]
+
+
 let connect a b =
+  printf "[natpunch] Setting nat punch between host %s and %s\n%!" a b; 
   return ()
 
 (* ******************************************
