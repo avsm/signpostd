@@ -91,6 +91,33 @@ let gen_server_syn data new_isn local_mac gw_mac
                         tcp_body:(Bitstring.bitstring_length tcp_body):bitstring}
       | { _ } -> invalid_arg("gen_server_syn input packet is not TCP") 
 
+(* 
+ * generate an ack packet with any data
+* *)
+let gen_tcp_syn isn src_mac dst_mac src_ip dst_ip 
+      src_port dst_port win =
+  let eth_hdr = 
+      BITSTRING{dst_mac:48:string; src_mac:48:string; 
+                0x0800:16} in 
+  let ip_chk = Checksum.ones_complement 
+                 (BITSTRING{ 4:4; 5:4; 0:8; 40:16; 0:16; 0:3; 
+                             0:13; 64:8; 6:8; 0:16; src_ip:32; 
+                             dst_ip:32}) in
+  let ipv4_hdr = 
+    BITSTRING { 4:4; 5:4; 0:8; 40:16; 0:16; 0:3; 0:13; 64:8; 
+                6:8; ip_chk:16:littleendian; src_ip:32; dst_ip:32} in
+  let tcp_chk = 
+    (Checksum.ones_complement (
+      BITSTRING{src_ip:32; dst_ip:32; 0:8; 6:8; 20:16; src_port:16; 
+                dst_port:16; isn:32;  0l:32; 5:4; 0:6; false:1; 
+                false:1; false:1; false:1; true:1; false:1; win:16;
+                0:16; 0:16})) in 
+  let tcp_hdr = 
+    BITSTRING {src_port:16; dst_port:16; isn:32; 0l:32; 5:4;
+               0:6; false:1; false:1; false:1; false:1; true:1; 
+               false:1; win:16; tcp_chk:16:littleendian;0:16} in  
+    Bitstring.concat [eth_hdr; ipv4_hdr; tcp_hdr;] 
+
 
 (* 
  * generate an ack packet with any data

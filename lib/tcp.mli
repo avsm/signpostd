@@ -20,6 +20,8 @@ val get_tcp_sn : Bitstring.t -> int32
 val get_tcp_packet_payload : Bitstring.t -> Bitstring.t
 val gen_server_syn : Bitstring.t -> int32 -> string -> 
   string -> int32 -> int32 -> int -> Bitstring.t  
+val gen_tcp_syn : int32 -> string -> 
+  string -> int32 -> int32 -> int -> int ->  int -> Bitstring.t
 val gen_server_ack : int32 -> int32 -> string -> 
   string -> int32 -> int32 -> int -> int ->  int -> Bitstring.t
 val gen_server_synack : int32 -> int32 -> string -> 
