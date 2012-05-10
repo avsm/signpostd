@@ -29,7 +29,7 @@ type natpanch_state_type = {
 
 let nat_socket = 11000
 
-let netpanch_daemon () = 
+let netpanch_daemon = 
   printf "[netpanch] Starting intermediate socket..\n%!";
   let server_sock = Lwt_unix.socket PF_INET SOCK_STREAM 0 in
   (* so we can restart our server quickly *)
@@ -56,13 +56,17 @@ let netpanch_daemon () =
     return (Lwt_unix.shutdown client_sock SHUTDOWN_ALL)
   done
 
+(*
 let test_state = 
   Lwt.choose [(netpanch_daemon ())]
-
+*)
 
 let connect a b =
-  printf "[natpunch] Setting nat punch between host %s and %s\n%!" a b; 
-  return ()
+  printf "[natpunch] Setting nat punch between host %s - %s\n%!" a b;
+  let rpc = (Rpc.create_tactic_request "natpanch" 
+    Rpc.TEST "client_connect" [(string_of_int nat_socket)]) in
+  lwt res = (Nodes.send_blocking a rpc) in
+    return ()
 
 (* ******************************************
  * A tactic to setup a layer 2 ssh tunnel
