@@ -62,7 +62,15 @@ module Manager = struct
     let client_sock = socket PF_INET SOCK_STREAM 0 in
     let hentry = Unix.inet_addr_of_string ip in
     lwt _ = Lwt_unix.connect client_sock (ADDR_INET (hentry, port)) in 
-      printf "client connected\n%!";
+      printf "[natpanch] client connected\n%!";
+      let ADDR_INET(loc_ip,loc_port) = 
+        Lwt_unix.getsockname client_sock in
+      let pkt_bitstring = BITSTRING {
+        (Uri_IP.string_to_ipv4 (Unix.string_of_inet_addr loc_ip)):32;
+        loc_port:16;(String.length (Nodes.get_local_name ())):16;
+        (Nodes.get_local_name ()):-1:string} in 
+      let pkt = Bitstring.string_of_bitstring pkt_bitstring in 
+      lwt _ = Lwt_unix.send client_sock pkt 0 (String.length pkt) [] in 
       return (Lwt_unix.shutdown client_sock SHUTDOWN_ALL)
 
 
