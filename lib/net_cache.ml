@@ -131,7 +131,8 @@ module Port_cache = struct
     String.sub (!ret) 0 ((String.length !ret) - 1)
 
   let add_dev dev port_id =
-    Printf.printf "[dev_cahce] adding device %s as port %d\n%!" dev port_id;
+(*     Printf.printf "[dev_cahce] adding device %s as port %d\n%!" dev port_id;
+ *     *)
     if (Hashtbl.mem dev_cache dev) then (
       Hashtbl.remove dev_cache dev;
       Hashtbl.add dev_cache dev port_id
@@ -155,8 +156,10 @@ module Port_cache = struct
       (!ret)
 
   let add_mac mac port_id = 
+(*
     Printf.printf "[dev_cahce] adding device %s on port %d\n%!" 
       (string_of_mac mac) port_id;
+*)
     if (Hashtbl.mem mac_cache mac) then (
       Hashtbl.remove mac_cache mac;
       Hashtbl.add mac_cache mac port_id
@@ -189,7 +192,7 @@ module Arp_cache = struct
             if (Hashtbl.mem cache ip) then (
               Hashtbl.remove cache ip;
               Hashtbl.add cache ip mac
-            ) else 
+            ) else
               Hashtbl.add cache ip mac
           ) 
         | _ -> Printf.printf "[net_cache] ip %s is not local. ignoring.\n%!"

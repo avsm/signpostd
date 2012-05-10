@@ -105,7 +105,7 @@ let init_ssh a b ip =
 let start_local_server a b =
   (* Maybe load a copy of the Openvpn module and let it 
    * do the magic? *)
-  printf "Starting ssh server...\n%!";
+  printf "[ssh] Starting ssh server...\n%!";
   lwt _ = Ssh.Manager.run_server () in 
   let connect_client node = 
     let domain = (sprintf "d%d.%s" 

@@ -20,7 +20,7 @@ open Printf
 
 
 let tactics = [
-(*  (module DirectConnection : Sp.TacticSig); *)
+  (module DirectConnection : Sp.TacticSig);
   (module OpenvpnConnection : Sp.TacticSig);
   (module PrivoxyConnection : Sp.TacticSig); 
   (module TorConnection : Sp.TacticSig); 
@@ -58,7 +58,7 @@ let connect_using_tactic tactic a b =
   try_lwt
     lwt t = Lwt_list.find_s ( fun t -> 
     let module Tactic = (val t : Sp.TacticSig) in
-      return ( (String.compare tactic (Tactic.name ())) == 0)
+      return ( (String.compare tactic (Tactic.name ())) = 0)
     ) tactics in
     let module Tactic = (val t : Sp.TacticSig) in
     Printf.eprintf "found tactic %s\n%!" (Tactic.name ()); 
