@@ -83,7 +83,8 @@ module Manager = struct
     match conn_db.server_pid with
     | None ->(
       try
-        let cmd = Unix.getcwd () ^ "/client_tactics/ssh/server" in
+        let cmd = Config.dir ^ "/client_tactics/ssh/server" in
+        printf "%s %s\n%!" cmd Config.conf_dir;
         let _ = Unix.create_process cmd [| cmd; Config.conf_dir |] 
         Unix.stdin Unix.stdout Unix.stderr in
         lwt _ = Lwt_unix.sleep 2.0 in 
