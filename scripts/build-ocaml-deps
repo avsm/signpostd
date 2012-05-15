@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 sudo apt-get update
-sudo apt-get -y install liblwt-ssl-ocaml-dev liblwt-ocaml-dev ocaml-native-compilers libounit-ocaml-dev git ocaml-findlib build-essential libbitstring-ocaml-dev libocamlgraph-ocaml-dev uml-utilities
+sudo apt-get -y install liblwt-ssl-ocaml-dev liblwt-ocaml-dev ocaml-native-compilers libounit-ocaml-dev git ocaml-findlib build-essential libbitstring-ocaml-dev libocamlgraph-ocaml-dev uml-utilities libcryptokit-ocaml-dev libgetopt-ocaml-dev  privoxy tor iodine 
 
 rm -rf obj
 mkdir obj
@@ -15,25 +15,27 @@ for i in re uri cohttp cohttpserver dns; do
   cd ..
 done
 
-git clone http://github.com/crotsos/ocaml-openflow
-cd ocaml-openflow
-make build
-sudo make reinstall
-cd ..
+for i in openflow crypto-keys; do
+  git clone http://github.com/crotsos/ocaml-$i
+  cd ocaml-$i
+  make build
+  sudo make reinstall
+  cd ..
+done
 
-if [ "`whereis ovs-vsctl | wc -l`" -gt 0 ]; then 
-  git clone http://openvswitch.org/git/openvswitch
-  cd openvswitch
-  ./boot.sh
-  ./configure --with-linux=/lib/modules/`uname -r`/build
-  make 
-  make install
-  cd datapath/linux/
-  make modules_install
-  depmod -ae
-  read_args (Array.to_list Sys.argv)
-  cd ../../../
-fi 
+# if [ "`whereis ovs-vsctl | wc -l`" -gt 0 ]; then 
+#   git clone http://openvswitch.org/git/openvswitch
+#   cd openvswitch
+#   ./boot.sh
+#   ./configure --with-linux=/lib/modules/`uname -r`/build
+#   make 
+#   make install
+#   cd datapath/linux/
+#   make modules_install
+#   depmod -ae
+#   read_args (Array.to_list Sys.argv)
+#   cd ../../../
+# fi 
 
 
 
