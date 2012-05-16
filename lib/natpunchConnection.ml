@@ -91,7 +91,8 @@ let connect_to_test_server ip port =
 let handle_incoming_synack_packet controller dpid evt =
   printf "[natpunch] Packet received\n%!";
   let (pkt, port, buffer_id) = match evt with 
-    | Controller.Event.Packet_in(port, buffer_id, pkt, dpid) -> (pkt,port,buffer_id)
+    | Controller.Event.Packet_in(port, buffer_id, pkt, dpid) -> 
+        (pkt,port,buffer_id)
     | _ -> eprintf "Unknown event";failwith "Invalid of action"
   in
   let m = OP.Match.parse_from_raw_packet port pkt in 
@@ -121,10 +122,13 @@ let http_pkt_in_cb controller dpid evt =
   in
   let m = OP.Match.parse_from_raw_packet port pkt in 
   let isn = Tcp.get_tcp_sn pkt in  
-  let rpc = (Rpc.create_tactic_request "natpanch" 
-  Rpc.TEST "server_connect" [(Uri_IP.ipv4_to_string m.OP.Match.nw_src);
-  (string_of_int m.OP.Match.tp_src); (string_of_int m.OP.Match.tp_dst); 
-  (Int32.to_string isn);]) in
+  let rpc = 
+    (Rpc.create_tactic_request "natpanch" 
+       Rpc.TEST "server_connect" 
+       [(Uri_IP.ipv4_to_string m.OP.Match.nw_src);
+        (string_of_int m.OP.Match.tp_src); 
+        (string_of_int m.OP.Match.tp_dst); 
+        (Int32.to_string isn);]) in
   let a = Hashtbl.find natpanch_state.node_name m.OP.Match.nw_dst in 
   lwt res = (Nodes.send_blocking a rpc) in
   let flow_wild = OP.Wildcards.({
@@ -141,6 +145,7 @@ let http_pkt_in_cb controller dpid evt =
 
 let connect a b =
   printf "[natpunch] Setting nat punch between host %s - %s\n%!" a b;
+(*
   let rpc = (Rpc.create_tactic_request "natpanch" 
     Rpc.TEST "client_connect" [(string_of_int nat_socket)]) in
   lwt res = (Nodes.send_blocking a rpc) in
@@ -157,10 +162,15 @@ let connect a b =
   Sp_controller.register_handler flow http_pkt_in_cb;
   lwt _ = connect_to_test_server 
             (Hashtbl.find natpanch_state.public_ip b) 11001 in
+ *)
 (*
   let rpc = (Rpc.create_tactic_request "natpanch" 
     Rpc.TEST "server_listen" [(string_of_int nat_socket)]) in
 *)
+  let ips = Nodes.get_local_ips b in 
+  let rpc = (Rpc.create_tactic_request "natpanch" 
+    Rpc.CONNECT "register_host" ([b] @ ips)) in
+  lwt res = (Nodes.send_blocking a rpc) in
      return ()
 
 (* ******************************************
@@ -187,5 +197,23 @@ let handle_request action method_name arg_list =
              return(Sp.ResponseError "Ssh teardown is not supported yet")
 
 let handle_notification action method_name arg_list =
-  eprintf "Ssh tactic doesn't handle notifications\n%!";
-  return ()
+  match method_name with 
+    | "server_connect" ->
+        (let a = List.nth arg_list 0 in 
+        let nw_src = List.nth arg_list 1 in
+        let tp_src = List.nth arg_list 2 in
+        let tp_dst = List.nth arg_list 3 in
+        let isn = List.nth arg_list 4 in
+        let nw_dst = Hashtbl.find natpanch_state.public_ip
+                  a in         
+        let rpc = 
+          (Rpc.create_tactic_request "natpanch" 
+             Rpc.TEST "server_connect" 
+             [nw_src; tp_src; tp_dst; isn;]) in
+
+(*         lwt res = (Nodes.send_blocking a rpc) in *)
+        lwt _ = Nodes.send_blocking a rpc in 
+          return () )
+    | _ -> 
+        (eprintf "[natpanch] tactic doesn't handle notifications\n%!";
+        return ())
