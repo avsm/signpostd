@@ -20,9 +20,9 @@ let signpost_number = 2
 let domain = "signpo.st"
 let ip_slash_24 = "172.16.11."
 (* This is the ip of the local test machine *)
-let external_ip = "128.232.10.35"
-let external_dns = "ec2-107-20-47-111.compute-1.amazonaws.com"
-let dir = "/root/signpostd/"
+let external_ip = "23.23.179.30"
+let external_dns = "23.23.179.30"
+let dir = "/home/cr409/signpostd/"
 let conf_dir = dir ^ "/conf/"
 let tmp_dir = dir ^ "/tmp/"
 

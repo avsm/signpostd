@@ -3,12 +3,12 @@ set -ex
 
 NS=`cat lib/config.ml | grep external_ip | awk '{print $4}' | sed 's/"//g'`
 IODINE_DOMAIN="i.d2.signpo.st"
-NS="128.232.32.229"
+NS="23.23.179.30"
 #NODE_NAME=`hostname -s`
 NODE_NAME=desktop
 
 PASS=`cat scripts/PASSWD`
-if [ "`ps -e | grep iodine | wc -l `" -lt 2 ]; then
+if [ "`ps -e | grep iodine | wc -l `" -lt 1 ]; then
   if [ $NS -eq "" ]; then
     iodine -P ${PASS} "$IODINE_DOMAIN";
   else

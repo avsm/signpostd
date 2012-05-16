@@ -94,7 +94,7 @@ let natpanch_state =
       let m = OP.Match.parse_from_raw_packet port pkt in
       let actions = [
           OP.Flow.Set_nw_dst(0x561EF43Bl);
-          OP.Flow.Output((OP.Port.of_int 1), 2000);] in
+          OP.Flow.Output((OP.Port.port_of_int 1), 2000);] in
       let pkt = OP.Flow_mod.create m 0L OP.Flow_mod.ADD 
         ~buffer_id:(Int32.to_int buffer_id) actions () in 
       let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
@@ -172,7 +172,7 @@ let natpanch_state =
             (Net_cache.Arp_cache.get_next_hop_mac src_ip) in
           let Some(dst_mac) = 
             (Net_cache.Arp_cache.get_next_hop_mac local_ip) in 
-          let pkt = Tcp.gen_tcp_syn isn src_mac dst_mac src_ip
+          let pkt = Tcp.gen_tcp_syn isn dst_mac src_mac src_ip
                       local_ip src_port dst_port 0x3000 in 
           let bs = (OP.Packet_out.packet_out_to_bitstring 
                       (OP.Packet_out.create ~buffer_id:(-1l)
@@ -289,7 +289,7 @@ let natpanch_state =
             (Net_cache.Arp_cache.get_next_hop_mac src_ip) in
           let Some(dst_mac) = 
             (Net_cache.Arp_cache.get_next_hop_mac local_ip) in 
-          let pkt = Tcp.gen_tcp_syn isn src_mac dst_mac src_ip
+          let pkt = Tcp.gen_tcp_syn isn dst_mac src_mac src_ip
                       local_ip src_port dst_port 0x3000 in 
           let bs = (OP.Packet_out.packet_out_to_bitstring 
                       (OP.Packet_out.create ~buffer_id:(-1l)
@@ -301,8 +301,8 @@ let natpanch_state =
                   Sp_controller.switch_data.Sp_controller.dpid)  in
           lwt _ = OC.send_of_data controller dpid bs in
             printf "XXXXXXXXXX looking for port %s\n%!" dev_id; 
-(*          let Some(port) = Net_cache.Port_cache.dev_to_port_id "eth0" in  *)
-          let port = OP.Port.port_of_int 1 in
+(*          let Some(port) = Net_cache.Port_cache.dev_to_port_id "eth1" in  *)
+          let port = OP.Port.port_of_int 1 in 
 (*             port in *)
           let m = OP.Match.parse_from_raw_packet port pkt in
           let actions = [OP.Flow.Output((OP.Port.Local), 2000);] in
