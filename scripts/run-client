@@ -5,7 +5,7 @@ NS=`cat lib/config.ml | grep external_ip | awk '{print $4}' | sed 's/"//g'`
 IODINE_DOMAIN="i.d2.signpo.st"
 NS="23.23.179.30"
 #NODE_NAME=`hostname -s`
-NODE_NAME=desktop
+NODE_NAME=tablet
 
 PASS=`cat scripts/PASSWD`
 if [ "`ps -e | grep iodine | wc -l `" -lt 1 ]; then
