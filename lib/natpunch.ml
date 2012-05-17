@@ -81,7 +81,6 @@ let natpanch_state =
           return ()
 
   let handle_incoming_synack_packet controller dpid evt =
-    printf "[natpunch] flow received\n%!";
     try_lwt
       let (pkt, port, buffer_id) = match evt with 
         | Controller.Event.Packet_in(port, buffer_id, pkt, dpid) ->
@@ -99,6 +98,7 @@ let natpanch_state =
                      m.OP.Match.nw_dst in
       
       (* configure outgoing flow *)
+      (* TODO: dest port should be discovered from state *)
       let actions = [
         OP.Flow.Set_nw_dst(nw_dst);
         OP.Flow.Output((OP.Port.port_of_int 1), 2000);] in
@@ -122,6 +122,7 @@ let natpanch_state =
         ~buffer_id:(-1) actions () in 
       let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
       lwt _ = OC.send_of_data controller dpid bs in 
+
       let rpc =
           (Rpc.create_tactic_notification "natpanch"
           Rpc.CONNECT "server_connect" 
@@ -132,15 +133,16 @@ let natpanch_state =
           (Int32.to_string isn);]) in
         Nodes.send_to_server rpc
     with exn ->
-        Printf.eprintf "[natpanch] Error: %s" (Printexc.to_string exn);
+        Printf.eprintf "[natpanch] Error: %s\n%!" (Printexc.to_string exn);
         return ()
 
   let register_dst a external_ip ip =
       Hashtbl.replace natpanch_state.map_ip_node 
         (Uri_IP.string_to_ipv4 ip) a;
       Hashtbl.replace natpanch_state.map_ip_ip 
-        (Uri_IP.string_to_ipv4 external_ip) 
-        (Uri_IP.string_to_ipv4 ip);
+        (Uri_IP.string_to_ipv4 ip)
+        (Uri_IP.string_to_ipv4 external_ip); 
+      Printf.printf "Adding %s -> %s\n%!" external_ip ip;
        let flow_wild = OP.Wildcards.({
           in_port=true; dl_vlan=true; dl_src=true; dl_dst=true;
           dl_type=false; nw_proto=false; tp_dst=true; tp_src=true;
