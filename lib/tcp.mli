@@ -16,6 +16,12 @@
 
 open Bitstring
 
+type tcp_flags_struct = {
+  urg:bool; ack: bool; 
+  psh:bool; rst:bool; 
+  syn:bool; fin:bool;}
+
+val get_tcp_flags : Bitstring.t -> tcp_flags_struct
 val get_tcp_sn : Bitstring.t -> int32
 val get_tcp_packet_payload : Bitstring.t -> Bitstring.t
 val gen_server_syn : Bitstring.t -> int32 -> string -> 

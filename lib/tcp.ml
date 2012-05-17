@@ -18,7 +18,6 @@ open Bitstring
 open Printf
 
 module Checksum = struct 
-
   let ones_complement data = 
     let rec add count data =
       bitmatch data with
@@ -35,6 +34,10 @@ module Checksum = struct
         ((lnot res) land 0xffff)
       )
 end
+type tcp_flags_struct = {
+    urg:bool; ack: bool; 
+    psh:bool; rst:bool; 
+    syn:bool; fin:bool;}
 
 let get_tcp_packet_payload data = 
   bitmatch data with 
@@ -50,6 +53,14 @@ let get_tcp_packet_payload data =
         (Bitstring.hexdump_bitstring Pervasives.stdout data;
         Printf.printf "get_tcp_packet_payload failed to parse\n%!";
          Bitstring.empty_bitstring)
+
+let get_tcp_flags data = 
+  bitmatch data with 
+    | {_:96:bitstring; 0x0800:16; 4:4; ihl:4; _:64:bitstring; 6:8; _:16; 
+       _:64:bitstring; _:(ihl-5)*32:bitstring; _:32; _:64; _:10;
+       urg:1; ack:1; psh:1; rst:1; syn:1; fin:1; _:-1:bitstring } ->
+        {urg; ack; psh; rst; syn; fin;}
+    | { _ } -> invalid_arg("get_tcp_sn packet is not TCP")
 
 let get_tcp_sn data = 
   bitmatch data with 

@@ -38,9 +38,11 @@ module Manager = struct
     (* translate signpost local to global ips
      * *)
     map_ip_ip : (int32, int32) Hashtbl.t;
+    map_port_ip : (int, int32) Hashtbl.t;
   }
 let natpanch_state = 
   {map_ip_node=(Hashtbl.create 1000);
+  map_port_ip=(Hashtbl.create 1000);
   map_ip_ip=(Hashtbl.create 1000);}
 
 
@@ -80,7 +82,35 @@ let natpanch_state =
           (Printexc.to_string exn);
           return ()
 
-  let handle_incoming_synack_packet controller dpid evt =
+  let filter_incoming_rst_packet controller dpid evt =
+    try_lwt
+      let (pkt, port, buffer_id) = match evt with 
+        | Controller.Event.Packet_in(port, buffer_id, pkt, dpid) ->
+                (pkt,port,buffer_id)
+        | _ -> eprintf "Unknown event";failwith "Invalid of action"
+      in
+      let m = OP.Match.parse_from_raw_packet port pkt in
+      let flags = Tcp.get_tcp_flags pkt in
+        match flags.Tcp.rst with 
+          | true -> return ()
+          | false -> (
+              let nw_src = Hashtbl.find natpanch_state.map_port_ip 
+                             m.OP.Match.tp_dst in
+                 let actions = [
+                   OP.Flow.Set_nw_src(nw_src);
+                   OP.Flow.Output(OP.Port.Local, 2000);] in
+                 let pkt = OP.Flow_mod.create m 0L OP.Flow_mod.ADD 
+                             ~buffer_id:(Int32.to_int buffer_id) actions () in 
+                 let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
+                    OC.send_of_data controller dpid bs
+            )
+
+    with exn ->
+        Printf.eprintf "[natpanch] Error: %s\n%!" (Printexc.to_string exn);
+        return ()
+
+
+  let handle_outgoing_syn_packet controller dpid evt =
     try_lwt
       let (pkt, port, buffer_id) = match evt with 
         | Controller.Event.Packet_in(port, buffer_id, pkt, dpid) ->
@@ -106,9 +136,9 @@ let natpanch_state =
                   ~buffer_id:(Int32.to_int buffer_id) actions () in 
       let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
       lwt _ = OC.send_of_data controller dpid bs in 
-      let actions = [
-          OP.Flow.Set_nw_src(m.OP.Match.nw_dst);
-          OP.Flow.Output(OP.Port.Local, 2000);] in
+
+      Hashtbl.replace natpanch_state.map_port_ip m.OP.Match.tp_src 
+        m.OP.Match.nw_dst;
       let m = OP.Match.({wildcards=(OP.Wildcards.exact_match);
                          in_port=(OP.Port.port_of_int 1); 
                          dl_vlan=0xffff; dl_vlan_pcp=(char_of_int 0);
@@ -118,10 +148,12 @@ let natpanch_state =
                          tp_src=m.OP.Match.tp_dst;tp_dst=m.OP.Match.tp_src;
                          nw_proto=(char_of_int 6); })
       in
-      let pkt = OP.Flow_mod.create m 0L OP.Flow_mod.ADD 
+        Sp_controller.register_handler m filter_incoming_rst_packet;
+
+     (*  let pkt = OP.Flow_mod.create m 0L OP.Flow_mod.ADD 
         ~buffer_id:(-1) actions () in 
       let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
-      lwt _ = OC.send_of_data controller dpid bs in 
+      lwt _ = OC.send_of_data controller dpid bs in *)
 
       let rpc =
           (Rpc.create_tactic_notification "natpanch"
@@ -151,7 +183,7 @@ let natpanch_state =
       let flow = OP.Match.create_flow_match flow_wild ~dl_type:(0x0800)
                     ~nw_proto:(char_of_int 6)  
                     ~nw_dst:(Uri_IP.string_to_ipv4 ip) () in
-      Sp_controller.register_handler flow handle_incoming_synack_packet
+      Sp_controller.register_handler flow handle_outgoing_syn_packet
 
   let connect kind args =
     match kind with
