@@ -81,71 +81,6 @@ let netpanch_daemon =
       return ()
   done
 
-(*
-let connect_to_test_server ip port =
-  let client_sock = socket PF_INET SOCK_STREAM 0 in
-  let hentry = Unix.inet_addr_of_string (Uri_IP.ipv4_to_string ip) in
-  lwt _ = Lwt_unix.connect client_sock (ADDR_INET (hentry, port)) in 
-  let data = "Hello world!!!" in
-  lwt _ = Lwt_unix.send client_sock data 0 (String.length data) [] in
-    printf "client connected\n%!";
-    return (Lwt_unix.shutdown client_sock SHUTDOWN_ALL)
-
-let handle_incoming_synack_packet controller dpid evt =
-  printf "[natpunch] Packet received\n%!";
-  let (pkt, port, buffer_id) = match evt with 
-    | Controller.Event.Packet_in(port, buffer_id, pkt, dpid) -> 
-        (pkt,port,buffer_id)
-    | _ -> eprintf "Unknown event";failwith "Invalid of action"
-  in
-  let m = OP.Match.parse_from_raw_packet port pkt in 
-  let actions = [OP.Flow.Output((OP.Port.Local), 2000);] in
-  let pkt = OP.Flow_mod.create m 0L OP.Flow_mod.ADD 
-              ~buffer_id:(Int32.to_int buffer_id) actions () in 
-  let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
-  lwt _ = OC.send_of_data controller dpid bs in 
-  
-  let actions = [OP.Flow.Output(port, 2000);] in
-   let m = OP.Match.({wildcards=(OP.Wildcards.exact_match);
-                     in_port=OP.Port.Local; dl_src=m.OP.Match.dl_dst;
-                     dl_dst=m.OP.Match.dl_src; dl_vlan=0xffff;
-                     dl_vlan_pcp=(char_of_int 0); dl_type=0x0800;
-                     nw_src=m.OP.Match.nw_dst; nw_dst=m.OP.Match.nw_src;
-                     nw_tos=(char_of_int 0); nw_proto=(char_of_int 6);
-                     tp_src=m.OP.Match.tp_dst; tp_dst=m.OP.Match.tp_src}) in 
-  let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
-  OC.send_of_data controller dpid bs
- 
-
-let http_pkt_in_cb controller dpid evt = 
-  printf "[natpunch] Packet received\n%!";
-  let (pkt, port, buffer_id) = match evt with 
-    | Controller.Event.Packet_in(port, buffer_id, pkt, dpid) -> (pkt,port,buffer_id)
-    | _ -> eprintf "Unknown event";failwith "Invalid of action"
-  in
-  let m = OP.Match.parse_from_raw_packet port pkt in 
-  let isn = Tcp.get_tcp_sn pkt in  
-  let rpc = 
-    (Rpc.create_tactic_request "natpanch" 
-       Rpc.TEST "server_connect" 
-       [(Uri_IP.ipv4_to_string m.OP.Match.nw_src);
-        (string_of_int m.OP.Match.tp_src); 
-        (string_of_int m.OP.Match.tp_dst); 
-        (Int32.to_string isn);]) in
-  let a = Hashtbl.find natpanch_state.node_name m.OP.Match.nw_dst in 
-  lwt res = (Nodes.send_blocking a rpc) in
-  let flow_wild = OP.Wildcards.({
-    in_port=true; dl_vlan=true; dl_src=true; dl_dst=true;
-    dl_type=false; nw_proto=false; tp_dst=false; tp_src=true;
-    nw_dst=(char_of_int 0); nw_src=(char_of_int 32);
-    dl_vlan_pcp=true; nw_tos=true;}) in 
-  let flow = OP.Match.create_flow_match flow_wild ~dl_type:(0x0800)
-               ~nw_proto:(char_of_int 6) 
-               ~nw_dst:m.OP.Match.nw_src 
-               ~tp_dst: m.OP.Match.tp_src () in 
-  Sp_controller.register_handler flow handle_incoming_synack_packet;
-  return () 
- *)
 let connect a b =
   printf "[natpunch] Setting nat punch between host %s - %s\n%!" a b;
   (* Fetch public ips to store them for mapping reasons *)
@@ -153,28 +88,13 @@ let connect a b =
     Rpc.TEST "client_connect" [(string_of_int nat_socket)]) in
   lwt res = (Nodes.send_blocking a rpc) in
   lwt res = (Nodes.send_blocking b rpc) in
-(*
- * let flow_wild = OP.Wildcards.({
-    in_port=true; dl_vlan=true; dl_src=true; dl_dst=true;
-    dl_type=false; nw_proto=false; tp_dst=false; tp_src=true;
-    nw_dst=(char_of_int 0); nw_src=(char_of_int 32);
-    dl_vlan_pcp=true; nw_tos=true;}) in 
-  let flow = OP.Match.create_flow_match flow_wild ~dl_type:(0x0800)
-               ~nw_proto:(char_of_int 6) 
-               ~nw_dst:(Hashtbl.find natpanch_state.public_ip b) 
-               ~tp_dst:11001 () in 
-  Sp_controller.register_handler flow http_pkt_in_cb;
-  lwt _ = connect_to_test_server 
-            (Hashtbl.find natpanch_state.public_ip b) 11001 in
- *)
-(*
-  let rpc = (Rpc.create_tactic_request "natpanch" 
-    Rpc.TEST "server_listen" [(string_of_int nat_socket)]) in
-*)
+
   (* register an opernflow hook for tcp connections destined to specific port *)
-  let ips = Nodes.get_local_ips b in 
+  let ips = Nodes.get_local_ips b in
+  let external_ip = Uri_IP.ipv4_to_string (
+    Hashtbl.find natpanch_state.public_ip b) in
   let rpc = (Rpc.create_tactic_request "natpanch" 
-    Rpc.CONNECT "register_host" ([b] @ ips)) in
+    Rpc.CONNECT "register_host" ([b;external_ip;] @ ips)) in
   lwt res = (Nodes.send_blocking a rpc) in
      return ()
 
