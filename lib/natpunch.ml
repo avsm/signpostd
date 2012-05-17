@@ -54,43 +54,39 @@ let natpanch_state =
 (*
  * Connection Methods
  * *)
-  let connect_client ip port = 
-    let client_sock = socket PF_INET SOCK_STREAM 0 in
-    let hentry = Unix.inet_addr_of_string ip in
-    lwt _ = Lwt_unix.connect client_sock (ADDR_INET (hentry, port)) in 
-      printf "[natpanch] client connected\n%!";
-      let ADDR_INET(loc_ip,loc_port) = 
-        Lwt_unix.getsockname client_sock in
-      let pkt_bitstring = BITSTRING {
-        (Uri_IP.string_to_ipv4 (Unix.string_of_inet_addr loc_ip)):32;
-        loc_port:16;(String.length (Nodes.get_local_name ())):16;
-        (Nodes.get_local_name ()):-1:string} in 
-      let pkt = Bitstring.string_of_bitstring pkt_bitstring in 
-      lwt _ = Lwt_unix.send client_sock pkt 0 (String.length pkt) [] in 
-      return (Lwt_unix.shutdown client_sock SHUTDOWN_ALL)
+  let connect_client ip port =
+      try_lwt 
+        let client_sock = socket PF_INET SOCK_STREAM 0 in
+        let hentry = Unix.inet_addr_of_string ip in
+        lwt _ = Lwt_unix.connect client_sock (ADDR_INET (hentry, port)) in 
+          printf "[natpanch] client connected\n%!";
+          let ADDR_INET(loc_ip,loc_port) = 
+            Lwt_unix.getsockname client_sock in
+              let pkt_bitstring = BITSTRING {
+                (Uri_IP.string_to_ipv4 (Unix.string_of_inet_addr loc_ip)):32;
+                loc_port:16;(String.length (Nodes.get_local_name ())):16;
+                (Nodes.get_local_name ()):-1:string} in 
+              let pkt = Bitstring.string_of_bitstring pkt_bitstring in 
+              lwt _ = Lwt_unix.send client_sock pkt 0 (String.length pkt) [] in 
+              return (Lwt_unix.shutdown client_sock SHUTDOWN_ALL)
+      with exn ->
+          Printf.eprintf "[natpanch] tcp client error:%s\n%!"
+          (Printexc.to_string exn);
+          return ()
 
-  let handle_incoming_synack_packet controller dpid evt =
-    printf "[natpunch] Packet received\n%!";
-    try_lwt
-      let (pkt, port, buffer_id) = match evt with 
-        | Controller.Event.Packet_in(port, buffer_id, pkt, dpid) ->
-                (pkt,port,buffer_id)
-        | _ -> eprintf "Unknown event";failwith "Invalid of action"
-      in
-      lwt _ = connect_client Config.external_ip 11000 in 
-      let m = OP.Match.parse_from_raw_packet port pkt in
-      let isn = Tcp.get_tcp_sn pkt in
-      let node = Hashtbl.find natpanch_state.public_ip 
-                    m.OP.Match.nw_dst in  
-      let rpc =
-          (Rpc.create_tactic_notification "natpanch"
-          Rpc.CONNECT "server_connect" 
-          [node; (Uri_IP.ipv4_to_string m.OP.Match.nw_src);
-          (string_of_int m.OP.Match.tp_src); 
-          (string_of_int m.OP.Match.tp_dst);
-          (Int32.to_string isn);]) in
-      lwt res = (Nodes.send_to_server rpc) in
-  
+      let handle_incoming_synack_packet controller dpid evt =
+        printf "[natpunch] Packet received\n%!";
+        try_lwt
+          let (pkt, port, buffer_id) = match evt with 
+            | Controller.Event.Packet_in(port, buffer_id, pkt, dpid) ->
+                    (pkt,port,buffer_id)
+            | _ -> eprintf "Unknown event";failwith "Invalid of action"
+          in
+          let m = OP.Match.parse_from_raw_packet port pkt in
+          let isn = Tcp.get_tcp_sn pkt in
+          let node = Hashtbl.find natpanch_state.public_ip 
+                        m.OP.Match.nw_dst in  
+     
       let m = OP.Match.parse_from_raw_packet port pkt in
       let actions = [
           OP.Flow.Set_nw_dst(0x561EF43Bl);
@@ -100,6 +96,8 @@ let natpanch_state =
       let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
       lwt _ = OC.send_of_data controller dpid bs in 
   
+       printf "[natpunch] send flow\n%!";
+
       let actions = [
           OP.Flow.Set_nw_src(m.OP.Match.nw_dst);
           OP.Flow.Output(OP.Port.Local, 2000);] in
@@ -117,8 +115,23 @@ let natpanch_state =
                          tp_src=m.OP.Match.tp_dst;
                          tp_dst=m.OP.Match.tp_src})
       in 
+      let pkt = OP.Flow_mod.create m 0L OP.Flow_mod.ADD 
+        ~buffer_id:(-1) actions () in 
       let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
-        OC.send_of_data controller dpid bs
+      lwt _ = OC.send_of_data controller dpid bs in 
+
+      lwt _ = connect_client Config.external_ip 11000 in 
+      let rpc =
+          (Rpc.create_tactic_notification "natpanch"
+          Rpc.CONNECT "server_connect" 
+          [node;(Nodes.get_local_name ()); 
+          (Uri_IP.ipv4_to_string m.OP.Match.nw_src);
+          (string_of_int m.OP.Match.tp_src); 
+          (string_of_int m.OP.Match.tp_dst);
+          (Int32.to_string isn);]) in
+      lwt res = (Nodes.send_to_server rpc) in
+      printf "[natpunch] notification send\n%!";
+         return(printf "[natpunch] send flow 2\n%!")
 
     with exn ->
         Printf.eprintf "[natpanch] Error: %s" (Printexc.to_string exn);

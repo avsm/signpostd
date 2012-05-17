@@ -26,6 +26,7 @@ let dir = "/home/ubuntu/signpostd/"
 let conf_dir = dir ^ "/conf/"
 let tmp_dir = dir ^ "/tmp/"
 let iodine_node_ip = "172.16.11.1"
+let iodine_node_ip = "23.23.179.30"
 let ns_server="8.8.8.8"
 (* for testing *)
 
