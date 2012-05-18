@@ -25,6 +25,7 @@ let tactics = [
   (module PrivoxyConnection : Sp.TacticSig); 
   (module TorConnection : Sp.TacticSig); 
   (module SshConnection : Sp.TacticSig);
+  (module AvahiConnection : Sp.TacticSig);
   (module NatpunchConnection : Sp.TacticSig);
   ]
 
