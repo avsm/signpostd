@@ -69,8 +69,8 @@ let handle_request action method_name arg_list =
           return(Sp.ResponseError (Printexc.to_string ex)) )
       | CONNECT ->
           (try 
-             lwt ip = Avahi.Manager.connect method_name arg_list in
-               return(Sp.ResponseValue ip)            
+             lwt _ = Avahi.Manager.connect method_name arg_list in
+               return(Sp.ResponseValue "")
            with e -> 
              return (Sp.ResponseError "ssh_connect"))
       | TEARDOWN ->
