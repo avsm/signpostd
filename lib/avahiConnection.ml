@@ -38,13 +38,25 @@ let connect a b =
      return ()
 
 let handle_notification action method_name arg_list =
-  match method_name with 
+  match method_name with
+    | "service" -> 
+      (let node = List.nth arg_list 0 in 
+       let nodes = Nodes.get_nodes ()  in
+       let rpc = (Rpc.create_tactic_request "avahi" 
+                    Rpc.CONNECT "service_advertise" arg_list) in
+         List.iter (
+           fun a -> 
+             if (node <> a) then
+               ignore_result((Nodes.send_blocking a rpc))
+         ) nodes;
+         return ()
+      )
     | _ -> 
         (eprintf "[avahi] tactic doesn't handle notifications\n%!";
         return ())
 
 (* ******************************************
- * A tactic to setup a Nat punch
+ * A tactic to intercept and advertise avani messages
  * ******************************************)
 let handle_request action method_name arg_list =
   let open Rpc in

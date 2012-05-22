@@ -76,6 +76,11 @@ let get_local_name () =
 let set_local_name name =
   local_name := name
 
+let get_nodes () = 
+  let ret = ref [] in 
+  Hashtbl.iter (fun a b -> ret := [a] @ (!ret)) node_db.nodes;
+  !ret
+
 (* ---------------------------------------------------------------------- *)
 
 (* Sending RPC's to nodes, are defined as part of the Nodes module
