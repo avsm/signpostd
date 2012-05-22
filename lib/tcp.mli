@@ -36,3 +36,5 @@ val gen_server_synack : int32 -> int32 -> string ->
 val gen_tcp_data_pkt : int32 -> int32 -> string -> 
   string -> int32 -> int32 -> int -> int -> Bitstring.t -> 
   Bitstring.t
+val gen_udp_pkt : string -> string -> int32 -> int32 -> 
+int -> int -> Bitstring.t -> Bitstring.t

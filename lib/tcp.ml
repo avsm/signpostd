@@ -201,4 +201,22 @@ let gen_tcp_data_pkt isn ack local_mac gw_mac gw_ip local_ip
         0:6; false:1; true:1; false:1; false:1; false:1; false:1; 
         0xffff:16; tcp_chk:16:littleendian; 0:16;
         data:(Bitstring.bitstring_length data):bitstring} in  
-    Bitstring.concat [eth_hdr; ipv4_hdr; tcp_hdr;] 
+    Bitstring.concat [eth_hdr; ipv4_hdr; tcp_hdr;]
+
+(* 
+* Generate a udp packet with data 
+* *)
+let gen_udp_pkt src_mac dst_mac src_ip dst_ip 
+      src_port dst_port data =
+  let eth_hdr = BITSTRING{dst_mac:48:string;src_mac:48:string; 
+                          0x0800:16} in 
+  let ip_chk = Checksum.ones_complement (BITSTRING { 4:4; 5:4; 0:8; 
+        (28 + ((Bitstring.bitstring_length data)/8)):16; 0:16; 0:3; 
+        0:13; 64:8; 17:8; 0:16; src_ip:32; dst_ip:32}) in
+  let ipv4_hdr = BITSTRING { 4:4; 5:4; 0:8; 
+    (28 + ((Bitstring.bitstring_length data)/8)):16; 0:16; 0:3; 0:13; 
+    64:8; 17:8; ip_chk:16:littleendian; src_ip:32; dst_ip:32} in
+  let udp_hdr = BITSTRING {src_port:16; dst_port:16;
+        (8+((Bitstring.bitstring_length data)/8)):16; 0:16;
+        data:(Bitstring.bitstring_length data):bitstring} in  
+    Bitstring.concat [eth_hdr; ipv4_hdr; udp_hdr;] 
