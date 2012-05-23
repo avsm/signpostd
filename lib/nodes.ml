@@ -26,6 +26,10 @@ open Re_str
 
 exception InconsistentState of string
 
+let sp_ip_network = "172.31.0.0"
+let sp_ip_netmask = 16
+
+
 
 (* Nodes have a lot of associated information.
  * It is all part of the node store.
@@ -34,7 +38,8 @@ type node = {
   signalling_channel: Sp.signalling_channel;
   name: Sp.name;
   local_ips: Sp.ip list;
-  public_ips : Sp.ip list
+  public_ips : Sp.ip list;
+  sp_ip : int32;
 }
 
 type nodes_state = {
@@ -46,11 +51,24 @@ let local_name = ref "unknown"
 (* node name -> Sp.node *)
 let node_db = {nodes=(Hashtbl.create 0);}
 
+let rec find_free_ip () =  
+    (* 172.31.0.0 is the network, 172.31.0.1 is the cloud,
+     *  172.31.255.255 is the broadcast *)
+    let node_ip = Int32.add (Uri_IP.string_to_ipv4 sp_ip_network)  
+                  (Int32.add (Random.int32 0xFFFFCl)  2l) in
+    let found = ref false in 
+      Hashtbl.iter (fun _ a -> 
+      found := ((!found) || (node_ip = a.sp_ip)) ) node_db.nodes;
+      match (!found) with
+        | false -> node_ip
+        | true -> find_free_ip ()
+
 let new_node_with_name name ?(ips=[]) ?(public_ips=[]) () = {
   name = name;
   signalling_channel = Sp.NoSignallingChannel;
   local_ips = ips;
-  public_ips = [];
+  public_ips = []; 
+  sp_ip = (find_free_ip ());
 }
 
 let update name node =

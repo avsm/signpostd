@@ -80,5 +80,8 @@ let tactic_by_name name =
 let find a b =
   eprintf "Finding existing connections between %s and %s\n" a b;
   eprintf "Trying to establish new ones\n";
+  if 
+  ingore_result (connect a b);
+  
   connect a b;
   Connections.lookup a b
