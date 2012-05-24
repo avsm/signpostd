@@ -63,7 +63,8 @@ let connect_using_tactic tactic a b =
     ) tactics in
     let module Tactic = (val t : Sp.TacticSig) in
     Printf.eprintf "found tactic %s\n%!" (Tactic.name ()); 
-    Tactic.connect a b
+    let dst_ip = Tactic.connect a b in 
+      return ()
     
   with Not_found ->
     return (Printf.eprintf "cannot find tactic %s\n%!" tactic)
@@ -80,8 +81,11 @@ let tactic_by_name name =
 let find a b =
   eprintf "Finding existing connections between %s and %s\n" a b;
   eprintf "Trying to establish new ones\n";
-  if 
-  ingore_result (connect a b);
-  
-  connect a b;
-  Connections.lookup a b
+  try_lwt
+    let ret = Uri_IP.ipv4_to_string (Nodes.get_sp_ip b) in
+    let _ = Lwt.ignore_result(connect a b) in 
+      return (Sp.IPAddressInstance(ret))
+  with exn ->
+    Printf.printf "[Nodes] cannot find node %s \n%!" b;
+    return(Sp.Unreachable)
+

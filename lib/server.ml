@@ -37,23 +37,16 @@ let nxdomain =
 (* Ip address response for a node *)
 let ip_resp ~dst ~src ~domain =
   let open Dns.Packet in
-  let addressables = Engine.find src dst in
-  let ip_addressables = List.filter (function
-    | (Sp.IPAddressInstance(ip)) -> true
-    | _ -> false) addressables in
-  let ip_addresses = List.map (fun (Sp.IPAddressInstance(ip)) ->
-        (Nodes.convert_ip_string_to_int ip)) ip_addressables in
-  let answers = List.map (fun ip ->
-    {
-      rr_name=dst::src::domain;
-      rr_class=`IN;
-      rr_ttl=0l;
-      rr_rdata=`A ip;
-    } 
-  ) ip_addresses in
-  let authority = [] in
-  let additional = [] in
-  { Dns.Query.rcode=`NoError; aa=true; answer=answers; authority; additional }
+  lwt ip = Engine.find src dst in
+    match ip with
+      | (Sp.IPAddressInstance(ip)) -> (
+          let answers = { rr_name=dst::src::domain;
+                          rr_class=`IN; rr_ttl=0l;
+                          rr_rdata=`A (Uri_IP.string_to_ipv4 ip);} in
+            return ({ Dns.Query.rcode=`NoError; aa=true; answer=[answers]; 
+              authority=[]; additional=[]; }) )
+      | _ -> return ( { Dns.Query.rcode=`NXDomain; aa=false;
+               answer=[]; authority=[]; additional=[] })
 
 (* Figure out the response from a query packet and its question section *)
 let get_response packet q =
@@ -72,15 +65,16 @@ let get_response packet q =
      if domain' = our_domain then begin
        eprintf "src:%s dst:%s dom:%s\n%!" src dst domain';
        ip_resp ~dst ~src ~domain
-     end else from_trie
+     end else return(from_trie)
   end
-  |_ -> from_trie
+  |_ -> return (from_trie)
 
 let dnsfn ~src ~dst packet =
   let open Dns.Packet in
   match packet.questions with
   |[] -> eprintf "bad dns query: no questions\n%!"; return None
-  |[q] -> return (Some (get_response packet q))
+  |[q] -> lwt resp = get_response packet q in
+    return (Some (resp))
   |_ -> eprintf "dns dns query: multiple questions\n%!"; return None
 
 let load_dnskey_rr () = 

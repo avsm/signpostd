@@ -27,6 +27,7 @@ type srv = SRV of ip * port
 type addressable =
   | IPAddressInstance of ip
   | SRVInstance of srv
+  | Unreachable
 
 type signalling_channel =
   | SignallingChannel of ip * port

@@ -20,7 +20,7 @@
  *  a link between them, and will immediately return with all
  *  known existing links
  *)
-val find : Sp.name -> Sp.name -> Sp.addressable list
+val find : Sp.name -> Sp.name -> Sp.addressable Lwt.t
 
 val tactic_by_name : Rpc.tactic_name -> (module Sp.TacticSig) option
 val connect_using_tactic : string -> string -> string -> unit Lwt.t

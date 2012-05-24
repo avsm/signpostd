@@ -75,8 +75,9 @@ let update name node =
   Hashtbl.replace node_db.nodes name node
 
 let get name = 
-  try (Hashtbl.find node_db.nodes name)
-  with Not_found -> (new_node_with_name name () )
+  Hashtbl.find node_db.nodes name
+(*  try (Hashtbl.find node_db.nodes name)
+  with Not_found -> (new_node_with_name name () ) *)
 
 let get_ip name =
   let node = get name in
@@ -87,6 +88,10 @@ let get_ip name =
 let get_local_ips name =
   let node = get name in
   node.local_ips
+
+let get_sp_ip name = 
+  let node = get name in
+    node.sp_ip
 
 let get_local_name () = 
   (!local_name)
