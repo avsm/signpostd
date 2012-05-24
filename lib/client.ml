@@ -79,21 +79,29 @@ let forward_dns_query_to_sp _ q =
   (* Normalise the domain names to lower case *)
   let dst = String.lowercase (List.hd q.DP.q_name) in
   let src = !node_name in 
-  let q_name = ([dst; src; ] @ (Re_str.(split (regexp_string ".") our_domain))) in 
+  let q_name = ([dst; src; ] @ 
+                (Re_str.(split (regexp_string ".") our_domain))) in 
   let query = DP.({q_name=q_name; q_type=`A; q_class=`IN; }) in 
   let dns_q = DP.({id=(Dns.Wire.int16 1); 
-    detail=(DP.build_detail DP.({qr=`Query;opcode=`Query;aa=true;tc=false;
-    rd=false;ra=false;rcode=`NoError})); questions=[query];answers=[];
-    authorities=[];additionals=[];}) in
+                   detail=(DP.build_detail 
+                             DP.({qr=`Query; opcode=`Query;
+                                  aa=true;tc=false;
+                                  rd=false;ra=false;rcode=`NoError})); 
+                   questions=[query];answers=[];
+                   authorities=[];additionals=[];}) in
   let data = Bitstring.string_of_bitstring (DP.marshal_dns dns_q) in
-  let dst = Lwt_unix.ADDR_INET((Unix.inet_addr_of_string Config.iodine_node_ip), 53) in
+  let dst = Lwt_unix.ADDR_INET((Unix.inet_addr_of_string 
+                                  Config.iodine_node_ip), 5354) in
   lwt _ = Lwt_unix.sendto ns_fd data 0 (String.length data) [] dst in
   let buf = (String.create 1500) in 
   lwt (len, _) = Lwt_unix.recvfrom ns_fd buf 0 1500 [] in 
   let lbl = Hashtbl.create 64 in 
-  let reply = (DP.parse_dns lbl (Bitstring.bitstring_of_string (String.sub buf 0 len))) in
+  let reply = (DP.parse_dns lbl 
+                 (Bitstring.bitstring_of_string 
+                    (String.sub buf 0 len))) in
   let reply_det = DP.parse_detail reply.DP.detail in 
-  let q_reply = DQ.({rcode=reply_det.Dns.Packet.rcode;aa=reply_det.Dns.Packet.aa;
+  let q_reply = DQ.({rcode=reply_det.Dns.Packet.rcode;
+                     aa=reply_det.Dns.Packet.aa;
                      answer=(reply.Dns.Packet.answers);
                      authority=(reply.Dns.Packet.authorities);
                      additional=(reply.Dns.Packet.additionals);}) in
@@ -115,9 +123,9 @@ let get_response packet q =
 let dnsfn ~src ~dst packet =
   let open Dns.Packet in
   match packet.questions with
-  |[] -> eprintf "bad dns query: no questions\n%!"; return None
-  |[q] -> (get_response packet q )
-     |_ -> eprintf "dns dns query: multiple questions\n%!"; return None
+    | [] -> eprintf "bad dns query: no questions\n%!"; return None
+    | [q] -> (get_response packet q )
+    | _ -> eprintf "dns dns query: multiple questions\n%!"; return None
 
 let dns_t () =
   lwt fd, src = Dns_server.bind_fd ~address:"127.0.0.1" ~port:53 in
