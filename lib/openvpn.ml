@@ -92,13 +92,12 @@ module Manager = struct
     let send_pkt_to port ip = 
       let ipaddr = (Unix.gethostbyname ip).Unix.h_addr_list.(0) in
       let portaddr = Unix.ADDR_INET (ipaddr, port) in
-      let msg = ip in
-      Lwt_unix.sendto sock msg 0 (String.length msg) [] portaddr;
-      ()
+        lwt _ = Lwt_unix.sendto sock ip 0 (String.length ip) [] portaddr in 
+          return ()
     in
-     let _ = List.iter (send_pkt_to port) ips in
+     lwt _ = Lwt_list.iter_p (send_pkt_to port) ips in
      try 
-       let _ = setsockopt_float sock SO_RCVTIMEO 2.0 in 
+       let _ = setsockopt_float sock SO_RCVTIMEO 1.0 in 
        lwt (len, _) = Lwt_unix.recvfrom sock buf 0 1500 [] in
        lwt _ = Lwt_unix.close sock in
          return ((String.sub buf 0 len))
