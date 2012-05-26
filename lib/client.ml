@@ -81,7 +81,7 @@ let forward_dns_query_to_sp _ q =
   let src = !node_name in 
   let q_name = ([dst; src; ] @ 
                 (Re_str.(split (regexp_string ".") our_domain))) in 
-  let query = DP.({q_name=q_name; q_type=`A; q_class=`IN; }) in 
+  (* let query = DP.({q_name=q_name; q_type=`A; q_class=`IN; }) in 
   let dns_q = DP.({id=(Dns.Wire.int16 1); 
                    detail=(DP.build_detail 
                              DP.({qr=`Query; opcode=`Query;
@@ -98,13 +98,18 @@ let forward_dns_query_to_sp _ q =
   let lbl = Hashtbl.create 64 in 
   let reply = (DP.parse_dns lbl 
                  (Bitstring.bitstring_of_string 
-                    (String.sub buf 0 len))) in
-  let reply_det = DP.parse_detail reply.DP.detail in 
-  let q_reply = DQ.({rcode=reply_det.Dns.Packet.rcode;
-                     aa=reply_det.Dns.Packet.aa;
-                     answer=(reply.Dns.Packet.answers);
-                     authority=(reply.Dns.Packet.authorities);
-                     additional=(reply.Dns.Packet.additionals);}) in
+                    (String.sub buf 0 len))) in *)
+  let host = (Printf.sprintf "%s.%s.%s" dst src our_domain) in  
+  lwt src_ip = Dns_resolver.gethostbyname host in 
+(*   let reply_det = DP.parse_detail reply.DP.detail in *)
+    
+  let host = [dst;] @ (Re_str.(split (regexp_string ".") our_domain)) in  
+  let q_reply = DQ.({rcode=DP.(`NoError); aa=true;
+                     answer=[DP.({rr_name=host; rr_class=DP.(`IN);
+                              rr_ttl=60l;
+                              rr_rdata=(DP.(`A(List.hd src_ip)));})];
+                     authority=[];
+                     additional=[];}) in
     return (Some(q_reply))
 
   (* Figure out the response from a query packet and its question section *)
