@@ -145,7 +145,6 @@ module Manager = struct
     (* code to send udp packets to the destination*)
     | "client" -> (
       let port :: ips = args in 
-      Printf.printf "[openvpn] starting client..\n";
       lwt ip = run_client (int_of_string port) ips in
       (Printf.printf "[openvpn] Received a reply from ip %s \n%!" ip);
         return (ip))
@@ -163,46 +162,6 @@ module Manager = struct
  * Old code trying to use the ocaml-crypto-keys library. 
  * TODO: some memory leak creates problems and I need to debug. 
  * *)
-  let mkdir_internal dir = 
-    try 
-      Unix.mkdir dir 0o640
-    with 
-      | Unix.Unix_error(Unix.EEXIST, _, _) -> ()
-      | ex -> failwith (Printexc.to_string ex)
-
-  let setup_tmp_conf_dir node = 
-    (* create a tmp file to store any configuration scripts *)
-    let domain = node ^ (sprintf ".d%d.%s"
-      Config.signpost_number Config.domain) in  
-    let conf_dir = Config.tmp_dir ^ "/" ^ domain in
-
-    let _ = mkdir_internal conf_dir in
-    lwt _ = Lwt_unix.sleep 1.0 in 
-
-    (* Create temporary vpn key for tunnel *)
-    Printf.printf "test %s\n%!"  (conf_dir ^ "/vpn.pem");
-    let _ = Key.create_rsa_key (conf_dir ^ "/vpn.pem") 1024 in 
-      
-    (* Create signpost self signed key for the device *)
-    let convert_struct = 
-      Key.({
-        in_key=(Config.conf_dir ^  "/signpost.pem");
-        in_issuer=(sprintf "C=UK,O=signpost,CN=%s.%s, " 
-          (Nodes.get_local_name ()) domain);
-        in_ca_priv=(Config.conf_dir ^  "/signpost.pem");
-        in_type=PEM_PRIV;
-        action=SIGN;
-        cert_subj=(sprintf "C=UK,O=signpost,CN=%s.%s, " 
-          (Nodes.get_local_name ()) domain);
-        out_key= (conf_dir ^ "/tmp.crt");
-        out_type=PEM_CERT; 
-        duration=24*3600;
-        ns_ip=Config.iodine_node_ip;
-        ns_port=5354}) in
-    lwt local_cert = Key.string_of_process convert_struct in 
-    Printf.printf "certificate:%s" local_cert;
-    return ()
-
   let rec connect_to_server domain typ tries =
     Printf.printf "[openvpn] trying to start %s with try %d\n%!" typ tries;
     let remove_file_if_exists file = 
