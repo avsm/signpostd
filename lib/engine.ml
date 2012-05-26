@@ -22,17 +22,16 @@ open Printf
 let tactics = [
   (module DirectConnection : Sp.TacticSig);
   (module OpenvpnConnection : Sp.TacticSig);
-  (module PrivoxyConnection : Sp.TacticSig); 
-  (module TorConnection : Sp.TacticSig); 
-  (module SshConnection : Sp.TacticSig);
-  (module AvahiConnection : Sp.TacticSig);
-  (module NatpunchConnection : Sp.TacticSig);
+(*   (module PrivoxyConnection : Sp.TacticSig);  *)
+(*   (module TorConnection : Sp.TacticSig);  *)
+(*   (module SshConnection : Sp.TacticSig); *)
+(*   (module AvahiConnection : Sp.TacticSig); *)
+(*   (module NatpunchConnection : Sp.TacticSig); *)
   ]
 
 let tactics_not_attempted_or_failed_for a b =
-  let open List in
   let tactic_status_fn = Connections.get_tactic_status_for a b in
-  filter (fun t ->
+  List.filter (fun t ->
     let module Tactic = (val t : Sp.TacticSig) in
     let name = Tactic.name () in
     try
@@ -42,19 +41,24 @@ let tactics_not_attempted_or_failed_for a b =
       true
   ) tactics
 
-let iter_over_tactics a b =
-  let open List in
+let iter_over_tactics wakener a b =
   Lwt_list.iter_p (fun t ->
     let module Tactic = (val t : Sp.TacticSig) in
-    Tactic.connect a b
+    lwt res = Tactic.connect a b in
+    match res with
+      | false -> 
+          Printf.printf "XXXXX tactic %s failed\n%!" (Tactic.name ());
+          return ()
+      | true -> return(Lwt.wakeup wakener "")
   ) (tactics_not_attempted_or_failed_for a b)
 
-let connect a b =
+let connect wakener a b =
   eprintf "Engine is trying to connect %s and %s\n" a b;
-  iter_over_tactics a b
+  lwt ret = iter_over_tactics wakener a b in
+  eprintf "XXXXXX got a first connection yeah!!!!\n%!";
+    return () (* (Lwt.wakeup wakener ret) *)
 
 let connect_using_tactic tactic a b = 
-  let open List in
   Printf.printf "using tactic %s to connect %s %s\n%!" tactic a b; 
   try_lwt
     lwt t = Lwt_list.find_s ( fun t -> 
@@ -80,10 +84,12 @@ let tactic_by_name name =
 
 let find a b =
   eprintf "Finding existing connections between %s and %s\n" a b;
-  eprintf "Trying to establish new ones\n";
+(*   eprintf "Trying to establish new ones\n"; *)
   try_lwt
     let ret = Uri_IP.ipv4_to_string (Nodes.get_sp_ip b) in
-    let _ = Lwt.ignore_result(connect a b) in 
+    let waiter, wakener = Lwt.task () in 
+    let _ = Lwt.ignore_result(connect wakener a b) in
+    lwt _ =  waiter in 
       return (Sp.IPAddressInstance(ret))
   with exn ->
     Printf.printf "[Nodes] cannot find node %s \n%!" b;

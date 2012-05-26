@@ -55,7 +55,7 @@ let rec find_free_ip () =
     (* 172.31.0.0 is the network, 172.31.0.1 is the cloud,
      *  172.31.255.255 is the broadcast *)
     let node_ip = Int32.add (Uri_IP.string_to_ipv4 sp_ip_network)  
-                  (Int32.add (Random.int32 0xFFFFCl)  2l) in
+                  (Int32.add (Random.int32 0xFFFCl)  2l) in
     let found = ref false in 
       Hashtbl.iter (fun _ a -> 
       found := ((!found) || (node_ip = a.sp_ip)) ) node_db.nodes;
@@ -75,9 +75,9 @@ let update name node =
   Hashtbl.replace node_db.nodes name node
 
 let get name = 
-  Hashtbl.find node_db.nodes name
-(*  try (Hashtbl.find node_db.nodes name)
-  with Not_found -> (new_node_with_name name () ) *)
+(*   Hashtbl.find node_db.nodes name *)
+  try (Hashtbl.find node_db.nodes name)
+  with Not_found -> (new_node_with_name name () ) 
 
 let get_ip name =
   let node = get name in
@@ -145,7 +145,8 @@ let send_datagram text dst =
 let send_to_addr addr rpc = 
   let buf = Rpc.rpc_to_string rpc in
   lwt len' = send_datagram buf addr in
-  return (eprintf "sent [%d]: %s\n%!" len' buf)
+   return (eprintf "sent [%d]: %s\n%!" len' buf) 
+(*     return () *)
 
 let send name rpc =
   let ip, port = signalling_channel name in
@@ -155,7 +156,7 @@ let send name rpc =
 let send_to_server rpc =
   let ip = Config.iodine_node_ip in
   let port = of_int Config.signal_port in
-  eprintf "Sending to %s:%Li\n%!" ip port;
+(*   eprintf "Sending to %s:%Li\n%!" ip port; *)
   let server = addr_from ip port in
   send_to_addr server rpc
 
@@ -206,14 +207,18 @@ let wake_up_thread_with_reply id data =
 (* ---------------------------------------------------------------------- *)
 
 (* Public API *)
+
+(*let add_new_node name = 
+  if (Hashtbl.mem )*)
+
 let set_signalling_channel name channel_ip port =
   let node = get name in
   let sch = Sp.SignallingChannel(channel_ip, port) in
-  update name {node with signalling_channel = sch}
+    update name {node with signalling_channel = sch}
 
 let set_local_ips name local_ips =
   let node = get name in
-  update name {node with local_ips = local_ips}
+    update name {node with local_ips = local_ips}
 
 let discover_local_ips ?(dev="") () =
   let ip_stream = (Unix.open_process_in
@@ -223,7 +228,7 @@ let discover_local_ips ?(dev="") () =
   let ips = Re_str.split (Re_str.regexp " ") (String.sub buf 0 (len-1)) in
   let rec print_ips = function
     | ip :: ips ->
-        Printf.printf "ip: %s\n%!" ip;
+(*         Printf.printf "ip: %s\n%!" ip; *)
         print_ips ips
     | [] -> ()
   in
@@ -266,16 +271,16 @@ let check_for_publicly_accessible_ips name ips =
   let listen_for_datagrams () =
     let args = (string_of_int listen_port) :: token :: [] in
     let rpc = Rpc.create_request "listen_for_datagrams" args in
-    eprintf "About to send RPC and wait for IP results...\n";
+(*     eprintf "About to send RPC and wait for IP results...\n"; *)
     try 
       send_blocking name rpc >>= fun results ->
-      eprintf "Got a list of ips back from the server....\n";
+(*       eprintf "Got a list of ips back from the server....\n"; *)
       let public_ips = list_of_ips_from_string results in
       let node = get name in
       update name {node with public_ips = public_ips};
       let ip_list = list_of_ips_from_string results in
-      List.iter (fun ip -> eprintf "Received for %s\n%!" ip) ip_list;
-      eprintf "About to return...\n";
+(*       List.iter (fun ip -> eprintf "Received for %s\n%!" ip) ip_list; *)
+(*       eprintf "About to return...\n"; *)
       return ip_list
     with Rpc.Timeout ->
       return []
@@ -287,7 +292,7 @@ let check_for_publicly_accessible_ips name ips =
       let target = addr_from ip (of_int listen_port) in
       let msg = sprintf "%s-%s" token ip in
       lwt _ = send_datagram msg target in
-      eprintf "Sent datagram %s\n%!" msg;
+       eprintf "Sent datagram %s\n%!" msg; 
       return ()
     ) ips >>
     return []
