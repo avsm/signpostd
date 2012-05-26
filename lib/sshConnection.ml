@@ -145,18 +145,18 @@ let connect a b =
   if succ then (
     Printf.printf "[ssh] connect node %s using ip %s\n%!" a ip;
     lwt (a_ip, b_ip) = init_ssh a b ip in 
-  return ()
+      return (true)
   ) else
     (* try the reverse direction *)
     lwt (succ, ip) = pairwise_connection_test b a  in
       if succ then (
         Printf.printf "[ssh] connect node %s using ip %s\n%!" a ip;
         lwt (b_ip, a_ip) = init_ssh b a ip in 
-          return ()
+          return (true)
       ) else (
         Printf.printf "[ssh] pairwaise tests failed. Connecting through server\n%!";
         lwt _ = start_local_server a b  in
-          return ()
+          return (true)
       )
 
 
