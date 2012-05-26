@@ -85,9 +85,8 @@ module Manager = struct
       (* Make this a bit more random*)
         (Lwt_unix.bind sock (Lwt_unix.ADDR_INET (Unix.inet_addr_any,
         10000)))
-  with 
-      | exn -> Printf.eprintf "error: %s\n%!" (Printexc.to_string exn);
-      raise (OpenVpnError("Couldn't be a udp server"))
+    with exn -> Printf.eprintf "error: %s\n%!" (Printexc.to_string exn);
+                raise (OpenVpnError("Couldn't be a udp server"))
     in
     let send_pkt_to port ip =
       let ipaddr = (Unix.gethostbyname ip).Unix.h_addr_list.(0) in
@@ -95,30 +94,21 @@ module Manager = struct
         lwt _ = Lwt_unix.sendto sock ip 0 (String.length ip) [] portaddr in 
           return ()
     in
-    Printf.eprintf "[openvpn] %f:Start client send process \n%!" 
-      (Unix.gettimeofday ());
-     lwt _ = Lwt_list.iter_p (send_pkt_to port) ips in
-    Printf.eprintf "[openvpn] %f:End client send process \n%!" 
-      (Unix.gettimeofday ());
-      try 
+    lwt _ = Lwt_list.iter_p (send_pkt_to port) ips in
+     try 
        let _ = setsockopt_float sock SO_RCVTIMEO 1.0 in
        let ret = ref "" in 
        let recv = 
          (lwt (len, _) = Lwt_unix.recvfrom sock buf 0 1500 [] in
         ret := (String.sub buf 0 len);
-         return ()
-         ) in
+         return ()) in
          lwt _ = (Lwt_unix.sleep 4.0) <?> recv in 
-         Printf.eprintf "[openvpn] %f:end client recv process with ip %s\n%!" 
-           (Unix.gettimeofday ()) !ret;
           lwt _ = Lwt_unix.close sock in
           match (!ret) with
             | "" -> raise (OpenVpnError("Unreachable server"))
             | ip -> return (ip)
      with err -> 
-        Printf.eprintf "[openvpn] %f:Timeout client send process \n%!" 
-          (Unix.gettimeofday ());
-        eprintf "[openvpn] client test error: %s\n%!" 
+       eprintf "[openvpn] client test error: %s\n%!" 
          (Printexc.to_string err);
         raise (OpenVpnError(Printexc.to_string err))
 
