@@ -79,30 +79,9 @@ let forward_dns_query_to_sp _ q =
   (* Normalise the domain names to lower case *)
   let dst = String.lowercase (List.hd q.DP.q_name) in
   let src = !node_name in 
-  let q_name = ([dst; src; ] @ 
-                (Re_str.(split (regexp_string ".") our_domain))) in 
-  (* let query = DP.({q_name=q_name; q_type=`A; q_class=`IN; }) in 
-  let dns_q = DP.({id=(Dns.Wire.int16 1); 
-                   detail=(DP.build_detail 
-                             DP.({qr=`Query; opcode=`Query;
-                                  aa=true;tc=false;
-                                  rd=false;ra=false;rcode=`NoError})); 
-                   questions=[query];answers=[];
-                   authorities=[];additionals=[];}) in
-  let data = Bitstring.string_of_bitstring (DP.marshal_dns dns_q) in
-  let dst = Lwt_unix.ADDR_INET((Unix.inet_addr_of_string 
-                                  Config.iodine_node_ip), 5354) in
-  lwt _ = Lwt_unix.sendto ns_fd data 0 (String.length data) [] dst in
-  let buf = (String.create 1500) in 
-  lwt (len, _) = Lwt_unix.recvfrom ns_fd buf 0 1500 [] in 
-  let lbl = Hashtbl.create 64 in 
-  let reply = (DP.parse_dns lbl 
-                 (Bitstring.bitstring_of_string 
-                    (String.sub buf 0 len))) in *)
   let host = (Printf.sprintf "%s.%s.%s" dst src our_domain) in  
-  lwt src_ip = Dns_resolver.gethostbyname host in 
-(*   let reply_det = DP.parse_detail reply.DP.detail in *)
-    
+  lwt src_ip = Dns_resolver.gethostbyname 
+                 ~server:Config.external_ip ~dns_port:5354 host in 
   let host = [dst;] @ (Re_str.(split (regexp_string ".") our_domain)) in  
   let q_reply = DQ.({rcode=DP.(`NoError); aa=true;
                      answer=[DP.({rr_name=host; rr_class=DP.(`IN);
@@ -154,32 +133,7 @@ let update_server_if_state_has_changed () =
 
 let client_t () =
   lwt _ = Net_cache.Routing.load_routing_table () in
-(*
-  let (ip, gw, dev) = Net_cache.Routing.get_next_hop (Uri_IP.string_to_ipv4 "192.168.1.1") in 
-    Printf.printf "loukup 192.168.1.1 -> %s %s %s\n%!" (Uri_IP.ipv4_to_string ip) 
-      (Uri_IP.ipv4_to_string gw) dev;
-  let (ip, gw, dev) = Net_cache.Routing.get_next_hop (Uri_IP.string_to_ipv4 "10.21.0.1") in 
-    Printf.printf "loukup 10.20.0.1 -> %s %s %s\n%!" (Uri_IP.ipv4_to_string ip) 
-      (Uri_IP.ipv4_to_string gw) dev;
-  let (ip, gw, dev) = Net_cache.Routing.get_next_hop (Uri_IP.string_to_ipv4 "10.20.1.1") in 
-    Printf.printf "loukup 10.20.1.1 -> %s %s %s\n%!" (Uri_IP.ipv4_to_string ip) 
-      (Uri_IP.ipv4_to_string gw) dev;
-  let (ip, gw, dev) = Net_cache.Routing.get_next_hop (Uri_IP.string_to_ipv4 "10.20.0.1") in 
-    Printf.printf "loukup 10.20.0.1 -> %s %s %s\n%!" (Uri_IP.ipv4_to_string ip) 
-      (Uri_IP.ipv4_to_string gw) dev;
- *)
-    lwt _ = Net_cache.Arp_cache.load_arp () in
-(*
-  let ret = Net_cache.Switching.mac_of_ip (Net_cache.Switching.mac_of_string "08:00:27:9f:bc:b6") in 
-  let _ = 
-    match ret with 
-      | None -> Printf.printf "no entry found for 08:00:27:9f:bc:b6\n%!"
-      | Some((ip, dev_id, typ)) -> 
-          Printf.printf "08:00:27:9f:bc:b6 %s %s %s \n%!" 
-            (Uri_IP.ipv4_to_string ip) dev_id 
-            (Net_cache.Switching.string_of_dev_type typ)
-  in
- *)
+  lwt _ = Net_cache.Arp_cache.load_arp () in
   let xmit_t =
     while_lwt true do
       update_server_if_state_has_changed ();
