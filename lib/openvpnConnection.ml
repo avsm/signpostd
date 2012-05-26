@@ -42,48 +42,52 @@ let name () = "openvpn"
 let pairwise_connection_test a b =
   try_lwt 
 (*   let (dst_ip, dst_port) = Nodes.signalling_channel a in *)
-  let rpc = (Rpc.create_tactic_request "openvpn" 
+    let rpc = (Rpc.create_tactic_request "openvpn" 
       Rpc.TEST "server_start" [(string_of_int openvpn_port)]) in
-  lwt res = (Nodes.send_blocking a rpc) in
-  Printf.printf "UDP server started at %s\n%!" a;
+    lwt res = (Nodes.send_blocking a rpc) in
+    Printf.printf "[openvpn] UDP server started at %s\n%!" a;
 
-  let ips = Nodes.get_local_ips a in 
-  let rpc = (Rpc.create_tactic_request "openvpn" 
+    let ips = Nodes.get_local_ips a in 
+    let rpc = (Rpc.create_tactic_request "openvpn" 
       Rpc.TEST "client" ([(string_of_int openvpn_port)] @ ips)) in
-  lwt res = (Nodes.send_blocking b rpc) in   
-  let resp_ip = rpc_of_string res in 
+    lwt res = (Nodes.send_blocking b rpc) in   
+    let resp_ip = rpc_of_string res in 
 
-  let rpc = (Rpc.create_tactic_request "openvpn" 
+    let rpc = (Rpc.create_tactic_request "openvpn" 
       Rpc.TEST "server_stop" [(string_of_int openvpn_port)]) in
-  lwt _ = (Nodes.send_blocking a rpc) in 
-  return (true, res)
+    lwt _ = (Nodes.send_blocking a rpc) in 
+    return (true, res)
   with exn ->
-    Printf.eprintf "Pairwise test %s->%s failed:%s\n%s\n%!" a b
-    (Printexc.to_string exn) (Printexc.get_backtrace ());
+    let rpc = (Rpc.create_tactic_request "openvpn" 
+      Rpc.TEST "server_stop" [(string_of_int openvpn_port)]) in
+    lwt _ = (Nodes.send_blocking a rpc) in 
+    Printf.eprintf "[openvpn] Pairwise test %s->%s failed:%s\n%!" a b
+    (Printexc.to_string exn);
     return (false, "")
 (*    (true, "127.0.0.2") *)
 
 let start_vpn_server node port client domain =
   try_lwt
     let rpc = (Rpc.create_tactic_request "openvpn" 
-      Rpc.CONNECT "server" [(string_of_int openvpn_port); client;domain;]) in
+      Rpc.CONNECT "server" [(string_of_int openvpn_port); 
+                            client;domain;]) in
       Nodes.send_blocking node rpc
   with ex -> 
-    Printf.printf "Failed to start openvpn server on node %s %s\n%!" node
-    (Printexc.to_string ex);
+    Printf.printf "[openvpn ]Failed openvpn server %s:%s\n%!" node
+      (Printexc.to_string ex);
     raise Openvpn_error
 
 let start_vpn_client dst_ip host dst_port node domain = 
   let rpc = (Rpc.create_tactic_request "openvpn" 
   Rpc.CONNECT "client" [dst_ip; 
-                (string_of_int openvpn_port); 
-                node;domain;]) in
+                        (string_of_int openvpn_port); 
+                        node;domain;]) in
   try
     lwt res = (Nodes.send_blocking host rpc) in 
         return (res)
   with ex -> 
-    Printf.printf "Failed to start openvpn server on node %s %s\n%!" 
-    node (Printexc.to_string ex);
+    Printf.printf "[openvpn]Failed openvpn client %s: %s\n%!" 
+      node (Printexc.to_string ex);
     raise Openvpn_error
 
 let init_openvpn ip a b = 
@@ -115,29 +119,33 @@ let start_local_server a b =
   return ()
 
 let connect a b =
-  eprintf "Requesting the nodes ip addresses\n";
+  try 
   (* Trying to see if connectivity is possible *)
     lwt (succ, ip) = pairwise_connection_test a b in
     if succ then
       lwt (a_ip, b_ip) = init_openvpn ip a b in 
-        return ()
+        return true
     else
       (* try the reverse direction *)
       lwt (succ, ip) = pairwise_connection_test b a  in
       if succ then
         lwt (b_ip, a_ip) = init_openvpn ip b a in
-            return ()
+            return true
       else
         lwt _ = start_local_server a b in
         let ip = Config.external_ip in
         lwt a_ip = start_vpn_client ip b openvpn_port 
                      (sprintf "d%d" Config.signpost_number) 
-                     (sprintf "d%d.%s" Config.signpost_number Config.domain) in 
+                     (sprintf "d%d.%s" Config.signpost_number 
+                        Config.domain) in 
         lwt b_ip = start_vpn_client ip a openvpn_port
                      (sprintf "d%d" Config.signpost_number) 
-                     (sprintf "d%d.%s" Config.signpost_number Config.domain) in 
-          return ()
-        
+                     (sprintf "d%d.%s" Config.signpost_number 
+                        Config.domain) in 
+          return true
+  with exn ->
+    Printf.eprintf "[openvpn] connect failed...\n%!";
+    return false
 
 (**********************************************************************
  * Handle tactic signature ********************************************)
