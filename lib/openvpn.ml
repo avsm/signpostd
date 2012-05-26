@@ -192,13 +192,14 @@ module Manager = struct
       conn_db.max_id <- conn_id;
       (* /openvpn_tactic.sh 10000 1 d2.signpo.st debian haris 10.10.0.3 tmp/ conf/ *)
       (* Generate conf directories and keys *)
-      let cmd = Config.dir ^ "/client_tactics/openvpn/openvpn_tactic.sh" in
+      let cmd = Config.dir ^ 
+                "/client_tactics/openvpn/openvpn_tactic.sh" in
       let exec_cmd = 
         if ((Nodes.get_local_name ()) = "unknown" ) then
            Printf.sprintf "%s %s %d %s d%d %s %s %s %s %s "
                    cmd port conn_id Config.domain
-                   Config.signpost_number node ip domain Config.conf_dir 
-                   Config.tmp_dir   
+                   Config.signpost_number node ip domain 
+                   Config.conf_dir Config.tmp_dir   
         else
           Printf.sprintf "%s %s %d %s %s.d%d %s %s %s %s %s "
                    cmd port conn_id Config.domain (Nodes.get_local_name ())
@@ -246,6 +247,7 @@ module Manager = struct
         let port = List.nth args 0 in
         let node = List.nth args 1 in
         let domain = List.nth args 2 in 
+        let sp_ip = List.nth args 3 in
 
         lwt dev_id = 
             if Hashtbl.mem conn_db.conns domain then  (
