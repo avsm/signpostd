@@ -188,13 +188,13 @@ let init controller =
   OC.register_cb controller OE.PORT_STATUS_CHANGE port_status_cb
 
 let add_dev dev ip netmask =
-  lwt _ = Lwt_unix.system ("ovs-vsctl --db=unix:/var/run/ovsdb-server "^
+  lwt _ = Lwt_unix.system ("ovs-vsctl "^
                            " add-port br0 " ^ dev) in 
   lwt _ = Lwt_unix.system (Printf.sprintf "ip addr add %s/%s dev br0" ip netmask) in
   return ()
 
 let del_dev dev ip netmask =
-  lwt _ = Lwt_unix.system ("ovs-vsctl --db=unix:/var/run/ovsdb-server "^
+  lwt _ = Lwt_unix.system ("ovs-vsctl "^
                            " del-port br0 " ^ dev) in 
   lwt _ = Lwt_unix.system (Printf.sprintf "ip addr del %s/%s dev br0" ip netmask) in
   return ()
