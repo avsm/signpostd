@@ -152,7 +152,10 @@ module Manager = struct
       | "client" -> (
           try_lwt
             let _ :: ips = args in 
-            lwt ip = run_client ssh_port ips in
+
+            lwt ip = ((lwt _ = Lwt_unix.sleep 2.0 in 
+                         failwith("client can't connect") ) 
+                        <?> run_client ssh_port ips) in
               return (ip)
           with ex ->
             Printf.printf "[ssh] failed to start client: %s\n%!" 
