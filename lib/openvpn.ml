@@ -89,20 +89,36 @@ module Manager = struct
       | exn -> Printf.eprintf "error: %s\n%!" (Printexc.to_string exn);
       raise (OpenVpnError("Couldn't be a udp server"))
     in
-    let send_pkt_to port ip = 
+    let send_pkt_to port ip =
       let ipaddr = (Unix.gethostbyname ip).Unix.h_addr_list.(0) in
       let portaddr = Unix.ADDR_INET (ipaddr, port) in
         lwt _ = Lwt_unix.sendto sock ip 0 (String.length ip) [] portaddr in 
           return ()
     in
+    Printf.eprintf "[openvpn] %f:Start client send process \n%!" 
+      (Unix.gettimeofday ());
      lwt _ = Lwt_list.iter_p (send_pkt_to port) ips in
-     try 
-       let _ = setsockopt_float sock SO_RCVTIMEO 1.0 in 
-       lwt (len, _) = Lwt_unix.recvfrom sock buf 0 1500 [] in
-       lwt _ = Lwt_unix.close sock in
-         return ((String.sub buf 0 len))
+    Printf.eprintf "[openvpn] %f:End client send process \n%!" 
+      (Unix.gettimeofday ());
+      try 
+       let _ = setsockopt_float sock SO_RCVTIMEO 1.0 in
+       let ret = ref "" in 
+       let recv = 
+         (lwt (len, _) = Lwt_unix.recvfrom sock buf 0 1500 [] in
+        ret := (String.sub buf 0 len);
+         return ()
+         ) in
+         lwt _ = (Lwt_unix.sleep 4.0) <?> recv in 
+         Printf.eprintf "[openvpn] %f:end client recv process with ip %s\n%!" 
+           (Unix.gettimeofday ()) !ret;
+          lwt _ = Lwt_unix.close sock in
+          match (!ret) with
+            | "" -> raise (OpenVpnError("Unreachable server"))
+            | ip -> return (ip)
      with err -> 
-       eprintf "[openvpn] client test error: %s\n%!" 
+        Printf.eprintf "[openvpn] %f:Timeout client send process \n%!" 
+          (Unix.gettimeofday ());
+        eprintf "[openvpn] client test error: %s\n%!" 
          (Printexc.to_string err);
         raise (OpenVpnError(Printexc.to_string err))
 
@@ -110,7 +126,6 @@ module Manager = struct
     match kind with
     (* start udp server *)
     | "server_start" -> (
-      Printf.printf "[openvpn] starting server...\n%!";
       let port = (int_of_string (List.hd args)) in 
       let _ = run_server port in
         return ("OK"))
@@ -234,7 +249,7 @@ module Manager = struct
       Printf.printf "[openvpn] executing %s\n%!" exec_cmd;
       lwt _ = Lwt_unix.system exec_cmd in 
 (*     let _ = connect_to_server domain typ 3 in  *)
-    let _ = Unix.create_process "openvpn" 
+      let _ = Unix.create_process "openvpn" 
               [|""; "--config"; 
                 (Config.tmp_dir ^ "/" ^ domain ^"/" ^ typ ^ ".conf") |] 
               Unix.stdin Unix.stdout Unix.stderr in
@@ -259,10 +274,9 @@ module Manager = struct
       Lwt_unix.system exec_cmd  
         
     let read_pid_from_file filename = 
-        let buf = String.create 100 in
-        let fd = Unix.openfile filename [Unix.O_RDONLY]  0o640 in
-        let len = Unix.read fd buf 0 100 in 
-        let pid = int_of_string (String.sub buf 0 (len-1)) in 
+        let fd = open_in filename in
+        let pid = int_of_string (input_line fd) in 
+          close_in fd;
           Printf.printf "[openvpn] process created with pid %d...\n%!" pid;
           pid
 
@@ -323,10 +337,19 @@ module Manager = struct
         Hashtbl.add conn_db.conns (domain) 
                      {ip=Some(ip); port=(int_of_string port);
                      pid;dev_id; nodes=[node^ "." ^ Config.domain];};
-        
-        let ip = Nodes.discover_local_ips 
+        let rec get_openvpn_ip = function
+          | 0 -> raise( OpenVpnError("failed to start client"))
+          | tries -> 
+              let ip = Nodes.discover_local_ips 
                          ~dev:("tap"^(string_of_int dev_id)) () in
-        return ((List.hd ip))       
+                if ((List.length ip) >= 1) then
+                  return ((List.hd ip))
+                else (
+                  lwt _ = Lwt_unix.sleep 1.0 in 
+                    get_openvpn_ip (tries - 1)
+                )
+        in
+          get_openvpn_ip 10
       with ex ->
         raise(OpenVpnError(Printexc.to_string ex)))
     | _ -> raise(OpenVpnError(
