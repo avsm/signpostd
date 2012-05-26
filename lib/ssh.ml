@@ -166,28 +166,6 @@ module Manager = struct
    *    connection functions     
    *******************************************************************)
 
-  let setup_dev dev_id ip =
-    let dev = Printf.sprintf "tap%d" dev_id in 
-    lwt _ = Lwt_unix.system 
-              (Printf.sprintf "tunctl -t %s" dev) in
-    lwt _ = Lwt_unix.system 
-              (Printf.sprintf "ifconfig tap%d up" dev_id) in
-    lwt _ = Sp_controller.add_dev dev ip "24" in
-    let _ = Net_cache.Routing.add_next_hop (Uri_IP.string_to_ipv4 ip) 0xffffff00l 0l dev in 
-    let ip_stream = (Unix.open_process_in
-                       (Config.dir ^ "/client_tactics/get_local_device " ^ dev)) in
-    let record = input_line ip_stream in 
-    let ips = Re_str.split (Re_str.regexp " ") record in
-    let dev::mac::_ = ips in 
-      Net_cache.Arp_cache.add_mapping 
-        (Net_cache.Arp_cache.mac_of_string mac) (Uri_IP.string_to_ipv4 ip);
-(*         ) dev Net_cache.Switching.ETH; *)
-        Net_cache.Port_cache.add_mac (Net_cache.Arp_cache.mac_of_string mac)
-        (OP.Port.int_of_port OP.Port.Local );
-(*    lwt _ = Lwt_unix.system 
-              (Printf.sprintf "ifconfig tap%d %s netmask 255.255.255.0" 
-                 dev_id ip) in*)
-      return (ip)
 
   let server_add_client domain dev_id = 
     Printf.printf "[ssh] Adding new permitted key from domain %s\n%!" domain;
@@ -273,7 +251,7 @@ module Manager = struct
             server_add_client (List.hd args) dev_id;
             let dev_id = conn_db.max_dev_id in 
             let ip = Printf.sprintf "10.2.%d.1" dev_id in 
-              setup_dev dev_id ip
+              Tap.setup_dev dev_id ip
       | "client" ->
           let server_ip = List.nth args 0 in 
           let server_port = (int_of_string (List.nth args 1)) in 
@@ -288,7 +266,7 @@ module Manager = struct
                      (Re_str.split (Re_str.regexp "\\.") subnet) 2 in 
             let ip = Printf.sprintf "10.2.%s.2" remote_dev in 
             let gw_ip = Printf.sprintf "10.2.%s.1" remote_dev in 
-            lwt _ = setup_dev local_dev ip in                 
+            lwt _ = Tap.setup_dev local_dev ip in                 
             
             (* TODO: temporary hack to allow 2 nodes to talk when connected 
             * over the server. I need to set 2 different subnets. With the 

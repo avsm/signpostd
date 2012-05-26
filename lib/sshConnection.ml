@@ -119,7 +119,7 @@ let start_local_server a b =
         
         Ssh.Manager.server_add_client host dev_id;
         let ip = Printf.sprintf "10.2.%d.1" dev_id in 
-        lwt _ = Ssh.Manager.setup_dev dev_id ip in 
+        lwt _ = Tap.setup_dev dev_id ip in 
         let rpc = (Rpc.create_tactic_request "ssh" 
                  Rpc.CONNECT "client" [Config.external_ip; 
                                      (string_of_int ssh_port);
