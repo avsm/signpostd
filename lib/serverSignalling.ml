@@ -51,19 +51,19 @@ let handle_config_discovery = function
     eprintf "Handle_config_discovery failed because of invalid RPC\n%!";
     return ()
 
-let handle_hello args =
+let handle_hello src_ip args =
   let node :: ip :: str_port :: local_ips = args in
   let port = Int64.of_int (int_of_string str_port) in
   eprintf "rpc: hello %s -> %s:%Li\n%!" node ip port;
   Nodes.set_signalling_channel node ip port;
-  Nodes.set_local_ips node local_ips;
-  eprintf "About to check for publicly accesible ips\n%!";
+  Nodes.set_local_ips node ([(Uri_IP.ipv4_to_string src_ip)] @ local_ips);
+(*   eprintf "About to check for publicly accesible ips\n%!"; *)
   Nodes.check_for_publicly_accessible_ips node local_ips >>= fun public_ips -> 
-    eprintf "Got public ips... store them\n%!";
+(*     eprintf "Got public ips... store them\n%!"; *)
     Connections.set_public_ips node public_ips;
     return ()
 
-let handle_request command arg_list =
+let handle_request src_ip command arg_list =
   match command with
   | Command("config_discovery") ->
     handle_config_discovery arg_list >> 
@@ -84,12 +84,12 @@ let handle_request command arg_list =
       tactic_name;
       return Sp.NoResponse
 
-let handle_notification command arg_list =
+let handle_notification ip command arg_list =
   match command with
   | Command("hello") -> 
     eprintf "HELLO with args %s\n%!" 
     (String.concat ", " arg_list);
-    handle_hello arg_list
+    handle_hello ip arg_list
   | Command("exec_tactic") -> 
     begin 
       try

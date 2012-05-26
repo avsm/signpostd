@@ -21,10 +21,17 @@ open Lwt
 open Printf
 open Int64
 
+type sp_msg = {
+  src_ip : int32;
+  src_port : int;
+  cmd : Rpc.t option;
+}
 
 module type HandlerSig = sig
-  val handle_request : Rpc.command -> Rpc.arg list -> Sp.request_response Lwt.t
-  val handle_notification : Rpc.command -> Rpc.arg list -> unit Lwt.t
+  val handle_request : int32 -> Rpc.command -> 
+    Rpc.arg list -> Sp.request_response Lwt.t
+  val handle_notification : int32 -> Rpc.command -> 
+    Rpc.arg list -> unit Lwt.t
 end
 
 module type Functor = sig
@@ -32,11 +39,11 @@ module type Functor = sig
 end
 
 module Make (Handler : HandlerSig) = struct
-  let classify rpc =
+  let classify msg =
     let open Rpc in
-    match rpc with
-    | Request(c, args, id) -> begin
-        lwt response = (Handler.handle_request c args) in
+    match msg.cmd with
+    | Some (Request(c, args, id)) -> begin
+        lwt response = (Handler.handle_request msg.src_ip c args) in
         match response with
         | Sp.ResponseValue v -> begin
             let resp = (create_response_ok v id) in
@@ -48,16 +55,19 @@ module Make (Handler : HandlerSig) = struct
         end
         | Sp.NoResponse -> return ()
     end
-    | Response(r, id) ->
+    | Some (Response(r, id)) ->
         Nodes.wake_up_thread_with_reply id (Response(r, id))
-    | Notification(c, args) ->
-        Handler.handle_notification c args
+    | Some (Notification(c, args)) ->
+        Handler.handle_notification msg.src_ip c args
+    | _ -> Printf.eprintf "[signalHandler] failed to process req\n%!";
+           return ()
 
-  let dispatch_rpc = function
-    | Some rpc -> classify rpc
-    | None -> 
-        eprintf "The signal handler was asked to dispatch a 'None'-RPC\n%!";
-        return ()
+  let dispatch_rpc msg = 
+    match msg.cmd with 
+      | Some rpc -> classify msg
+      | None -> 
+          eprintf "signal handler cannot dispatch a 'None'-RPC\n%!";
+          return ()
 
   (* Listens on port Config.signal_port *)
   let bind_fd ~address ~port =
@@ -83,9 +93,16 @@ module Make (Handler : HandlerSig) = struct
       let buf = String.create 4096 in
       lwt len, dst = Lwt_unix.recvfrom fd buf 0 (String.length buf) [] in
       let subbuf = String.sub buf 0 len in
-      eprintf "udp recvfrom %s : %s\n%!" (sockaddr_to_string dst) subbuf;
+       eprintf "udp recvfrom %s : %s\n%!" (sockaddr_to_string dst) subbuf; 
       let rpc = Rpc.rpc_of_string subbuf in
-      dispatch_rpc rpc;
+      let msg = 
+        match dst with 
+          |  Unix.ADDR_UNIX x -> {src_ip=0l;src_port=0; cmd=rpc;}
+          | Unix.ADDR_INET (a,p) -> {
+              src_ip=(Uri_IP.string_to_ipv4 (Unix.string_of_inet_addr a)); 
+              src_port=0; cmd=rpc;}
+      in 
+      dispatch_rpc msg;
       return ()
     done
 end

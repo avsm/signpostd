@@ -14,10 +14,17 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
+type sp_msg = {
+  src_ip : int32;
+  src_port : int;
+  cmd : Rpc.t option;
+}
 
 module type HandlerSig = sig
-  val handle_request : Rpc.command -> Rpc.arg list -> Sp.request_response Lwt.t
-  val handle_notification : Rpc.command -> Rpc.arg list -> unit Lwt.t
+  val handle_request : int32 ->  Rpc.command ->
+    Rpc.arg list -> Sp.request_response Lwt.t
+  val handle_notification : int32 -> 
+    Rpc.command -> Rpc.arg list -> unit Lwt.t
 end
 
 module type Functor = sig

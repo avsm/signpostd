@@ -34,7 +34,7 @@ let execute_tactic cmd arg_list =
   pread ~timeout:120.0 cmd >>= fun value ->
   return (Sp.ResponseValue value)
 
-let handle_request command arg_list =
+let handle_request ip command arg_list =
   match command with
   | Command(command_name) -> 
       eprintf "REQUEST %s with args %s\n%!" 
@@ -52,7 +52,7 @@ let handle_request command arg_list =
               tactic_name;
           return Sp.NoResponse
 
-let handle_notification command arg_list =
+let handle_notification ip command arg_list =
   match command with
   | Command(command_name) -> 
       eprintf "NOTIFICATION: %s with args %s\n%!" 

@@ -68,15 +68,18 @@ let connect a b =
     (* If we cannot find the signalling channel of one of the nodes, then we
      * cannot either find what IP ranges they have in common.
      * We therefore return that they share no ips *)
-    with Not_found -> return [] in
+    with 
+        Not_found -> return [] 
+  in
   let tactic_name = name () in
   let store_progress = Connections.store_addresses a b (name ()) in
   store_progress Connections.IN_PROGRESS [];
   lwt results = connectable_ips () in
-  (match results with
-    | [] -> store_progress Connections.FAILED []
-    | _ -> store_progress Connections.OK results);
-  return ()
+  match results with
+    | [] -> store_progress Connections.FAILED [];
+            return false
+    | _ -> store_progress Connections.OK results;
+           return true
 
 (**********************************************************************
  * Handle tactic signature ********************************************)
