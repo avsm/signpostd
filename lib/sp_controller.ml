@@ -106,8 +106,13 @@ let add_entry_in_hashtbl mac_cache ix in_port =
 let switch_packet_in_cb controller dpid buffer_id m data in_port =
   (* save src mac address *)
   let ix = m.OP.Match.dl_src in
-    add_entry_in_hashtbl switch_data.mac_cache ix in_port;
-    Net_cache.Port_cache.add_mac ix (OP.Port.int_of_port in_port);
+  let _ = match ix with
+    | "\xff\xff\xff\xff\xff\xff" -> ()
+    | "\xfe\xff\xff\xff\xff\xff" -> ()
+    | _ -> (
+        add_entry_in_hashtbl switch_data.mac_cache ix in_port;
+        Net_cache.Port_cache.add_mac ix (OP.Port.int_of_port in_port)
+      ) in 
     let (_, gw, _) = Net_cache.Routing.get_next_hop m.OP.Match.nw_src in
     let _ =
       (* Add only local devices *)
@@ -188,13 +193,13 @@ let init controller =
   OC.register_cb controller OE.PORT_STATUS_CHANGE port_status_cb
 
 let add_dev dev ip netmask =
-  lwt _ = Lwt_unix.system ("ovs-vsctl "^
+  lwt _ = Lwt_unix.system ("ovs-vsctl --db=unix:/var/run/ovsdb-server "^
                            " add-port br0 " ^ dev) in 
   lwt _ = Lwt_unix.system (Printf.sprintf "ip addr add %s/%s dev br0" ip netmask) in
   return ()
 
 let del_dev dev ip netmask =
-  lwt _ = Lwt_unix.system ("ovs-vsctl "^
+  lwt _ = Lwt_unix.system ("ovs-vsctl --db=unix:/var/run/ovsdb-server "^
                            " del-port br0 " ^ dev) in 
   lwt _ = Lwt_unix.system (Printf.sprintf "ip addr del %s/%s dev br0" ip netmask) in
   return ()
