@@ -186,7 +186,7 @@ module Manager = struct
                     OP.Flow.Output((OP.Port.port_of_int port), 
                                    2000);] in
     let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.ADD 
-                ~buffer_id:(-1) actions () in 
+                ~idle_timeout:0  ~buffer_id:(-1) actions () in 
     let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
     lwt _ = OC.send_of_data controller dpid bs in
       
@@ -209,7 +209,7 @@ module Manager = struct
                     OP.Flow.Set_dl_dst(mac);
                     OP.Flow.Output(OP.Port.Local, 2000);] in
     let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.ADD 
-                ~buffer_id:(-1) actions () in 
+                ~idle_timeout:0  ~buffer_id:(-1) actions () in 
     let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
       OC.send_of_data controller dpid bs
 
