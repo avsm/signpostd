@@ -21,6 +21,10 @@ open Printf
 open Int64
 
 
+module OP =Ofpacket
+module  OC = Controller
+
+
 exception Ssh_error
 
 let name () = "ssh"
@@ -107,7 +111,7 @@ let start_local_server a b =
    * do the magic? *)
   printf "[ssh] Starting ssh server...\n%!";
   lwt _ = Ssh.Manager.run_server () in 
-  let connect_client node = 
+  let connect_client node =
     let domain = (sprintf "d%d.%s" 
     Config.signpost_number Config.domain) in 
     let host =  (node^ "." ^ domain) in 
@@ -118,17 +122,24 @@ let start_local_server a b =
         Ssh.Manager.conn_db.Ssh.Manager.max_dev_id in 
         
         Ssh.Manager.server_add_client host dev_id;
+        let dev = Printf.sprintf "tap%d" dev_id in
         let ip = Printf.sprintf "10.2.%d.1" dev_id in 
+        let local_ip = Uri_IP.string_to_ipv4 
+                         (Printf.sprintf "10.2.%d.1" dev_id) in  
+        let rem_ip = Uri_IP.string_to_ipv4 
+                       (Printf.sprintf "10.2.%d.2" dev_id) in 
         lwt _ = Tap.setup_dev dev_id ip in 
         let rpc = (Rpc.create_tactic_request "ssh" 
                  Rpc.CONNECT "client" [Config.external_ip; 
                                      (string_of_int ssh_port);
                                      domain; ip;]) in
-          lwt res = (Nodes.send_blocking node rpc) in 
-            return (res)
+        lwt res = (Nodes.send_blocking node rpc) in 
+        lwt _ = Lwt_unix.sleep 0.0 in  
+        lwt _ = Ssh.Manager.setup_flows dev local_ip rem_ip in
+          return (res)
   in
-  try 
-    lwt [a_ip; b_ip ] = Lwt_list.map_s connect_client [a; b] in
+  try_lwt
+    lwt [a_ip; b_ip ] = Lwt_list.map_p connect_client [a; b] in
       return [a_ip; b_ip]
   with ex ->
     Printf.printf "[ssh] client fail %s\n%!" (Printexc.to_string ex);
