@@ -112,10 +112,7 @@ let start_local_server a b =
     Config.signpost_number Config.domain) in 
     let host =  (node^ "." ^ domain) in 
       printf "[ssh] connecting host %s\n%!" host;
-      Ssh.Manager.conn_db.Ssh.Manager.max_dev_id 
-        <- Ssh.Manager.conn_db.Ssh.Manager.max_dev_id + 1;
-      let dev_id = 
-        Ssh.Manager.conn_db.Ssh.Manager.max_dev_id in 
+      let dev_id = Tap.get_new_dev_ip () in 
         
         Ssh.Manager.server_add_client host dev_id;
         let ip = Printf.sprintf "10.2.%d.1" dev_id in 
@@ -124,8 +121,8 @@ let start_local_server a b =
                  Rpc.CONNECT "client" [Config.external_ip; 
                                      (string_of_int ssh_port);
                                      domain; ip;]) in
-          lwt res = (Nodes.send_blocking node rpc) in 
-            return (res)
+        lwt res = (Nodes.send_blocking node rpc) in 
+          return (res)
   in
   try 
     lwt [a_ip; b_ip ] = Lwt_list.map_s connect_client [a; b] in
@@ -154,7 +151,7 @@ let connect a b =
         lwt (b_ip, a_ip) = init_ssh b a ip in 
           return (true)
       ) else (
-        Printf.printf "[ssh] pairwaise tests failed. Connecting through server\n%!";
+        Printf.printf "[ssh] Connecting through server\n%!";
         lwt _ = start_local_server a b  in
           return (true)
       )

@@ -52,12 +52,11 @@ module Manager = struct
   type conn_db_type = {
     conns_server: (string, server_det) Hashtbl.t;
     conns_client: (string, client_det) Hashtbl.t;
-    mutable max_dev_id : int;
     mutable server_pid: int option;
   }
 
   let conn_db = {conns_server=(Hashtbl.create 32); 
-                 conns_client=(Hashtbl.create 32); max_dev_id=0; 
+                 conns_client=(Hashtbl.create 32); 
                  server_pid=None;}
 
 (**********************************************************
@@ -221,20 +220,21 @@ module Manager = struct
           return ()
         ) else (
           try_lwt 
-          lwt key = Key.ssh_pub_key_of_domain ~server:(Config.iodine_node_ip) ~port:5354 domain in
-          match key with 
-          | Some(key) -> 
-            Hashtbl.add conn_db.conns_server domain 
-              {cl_key=(List.hd key);port;ip; dev_id=local_dev;pid=0;};
-            return (update_known_hosts ())
-          | None ->
-            return (Printf.printf "[ssh] Couldn't find a valid dnskey record\n%!")
-            with ex ->
-              Printf.printf "[ssh] client fail %s\n%!" (Printexc.to_string ex);
-              raise (SshError(Printexc.to_string ex))
-        )
-                 in
-                   return ("OK")
+            lwt key = Key.ssh_pub_key_of_domain 
+                      ~server:(Config.iodine_node_ip) ~port:5354 domain in
+            match key with 
+              | Some(key) -> 
+                Hashtbl.add conn_db.conns_server domain 
+                  {cl_key=(List.hd key);port;ip; dev_id=local_dev;pid=0;};
+                return (update_known_hosts ())
+              | None ->
+                return (Printf.printf "[ssh] no valid dnskey record\n%!")
+                with ex ->
+                  Printf.printf "[ssh] client fail %s\n%!" 
+                    (Printexc.to_string ex);
+                  raise (SshError(Printexc.to_string ex)))
+      in
+        return ("OK")
 
   let client_connect server_ip server_port local_dev remote_dev _ = 
     let cmd = Unix.getcwd () ^ "/client_tactics/ssh/client" in
@@ -242,17 +242,14 @@ module Manager = struct
     let _ = Unix.create_process cmd [|cmd; Config.conf_dir; server_ip;
                                         (string_of_int server_port);
                                         local_dev;remote_dev; |] 
-                Unix.stdin Unix.stdout Unix.stderr in
+              Unix.stdin Unix.stdout Unix.stderr in
       return (Printf.sprintf "10.2.%s.2" remote_dev)
-
 
   let connect kind args =
     match kind with
       | "server" ->
-          conn_db.max_dev_id <- conn_db.max_dev_id + 1;
-          let dev_id = conn_db.max_dev_id in 
+          let dev_id = Tap.get_new_dev_ip () in 
             server_add_client (List.hd args) dev_id;
-            let dev_id = conn_db.max_dev_id in 
             let ip = Printf.sprintf "10.2.%d.1" dev_id in 
               Tap.setup_dev dev_id ip
       | "client" ->
@@ -260,24 +257,25 @@ module Manager = struct
           let server_port = (int_of_string (List.nth args 1)) in 
           let domain = List.nth args 2 in 
           let subnet = List.nth args 3 in 
-            conn_db.max_dev_id <- conn_db.max_dev_id + 1;
-            let local_dev = conn_db.max_dev_id in        
-            lwt _ = client_add_server domain server_ip server_port local_dev in 
+          let local_dev = Tap.get_new_dev_ip () in        
+          lwt _ = client_add_server domain server_ip 
+                    server_port local_dev in 
   (* Ip address is constructed using the dev number in the 3 
    * octet *)
-            let remote_dev = List.nth 
-                     (Re_str.split (Re_str.regexp "\\.") subnet) 2 in 
-            let ip = Printf.sprintf "10.2.%s.2" remote_dev in 
-            let gw_ip = Printf.sprintf "10.2.%s.1" remote_dev in 
-            lwt _ = Tap.setup_dev local_dev ip in                 
+          let remote_dev = 
+            List.nth (Re_str.split (Re_str.regexp "\\.") subnet) 2 in 
+          let ip = Printf.sprintf "10.2.%s.2" remote_dev in 
+          let gw_ip = Printf.sprintf "10.2.%s.1" remote_dev in 
+          lwt _ = Tap.setup_dev local_dev ip in                 
             
             (* TODO: temporary hack to allow 2 nodes to talk when connected 
             * over the server. I need to set 2 different subnets. With the 
             * usage of openflow, this can be corrected. *) 
-            lwt _ = Lwt_unix.system 
-              (Printf.sprintf "route add -net 10.2.0.0/16 gw %s" gw_ip) in              
-                client_connect server_ip server_port 
-                (string_of_int local_dev) remote_dev subnet  
+          lwt _ = Lwt_unix.system 
+                    (Printf.sprintf "route add -net 10.2.0.0/16 gw %s" 
+                       gw_ip) in              
+            client_connect server_ip server_port 
+              (string_of_int local_dev) remote_dev subnet  
       | _ -> 
           Printf.eprintf "[ssh] Invalid connect kind %s\n%!" kind;
           raise (SshError "Invalid connect kind")
