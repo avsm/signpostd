@@ -58,4 +58,5 @@ module Port_cache : sig
   val add_mac: string -> int -> unit
   val del_mac: string -> unit
   val port_id_of_mac : string -> int option
+  val mac_of_port_id : int -> string option
 end
