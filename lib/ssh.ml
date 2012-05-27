@@ -192,10 +192,11 @@ module Manager = struct
       
     let ip_stream = (Unix.open_process_in
                        (Config.dir ^ 
-                        "/client_tactics/get_local_dev_ip br0")) in
+                        "/client_tactics/get_local_device br0")) in
     let ips = Re_str.split (Re_str.regexp " ") (input_line ip_stream) in 
-    let _::_::mac::_ = ips in
-
+    let _::mac::_ = ips in
+    Printf.printf "XXXXXXXX mac %s\n%!" mac;
+    let mac = Net_cache.Arp_cache.mac_of_string mac in 
     let flow_wild = OP.Wildcards.({
       in_port=false; dl_vlan=true; dl_src=true; dl_dst=true;
       dl_type=false; nw_proto=true; tp_dst=true; tp_src=true;
@@ -289,6 +290,7 @@ module Manager = struct
       return (Printf.sprintf "10.2.%s.2" remote_dev)
 
   let connect kind args =
+    try_lwt
     match kind with
       | "server" -> (
           let dev_id = Tap.get_new_dev_ip () in 
@@ -300,6 +302,7 @@ module Manager = struct
             let rem_ip = Uri_IP.string_to_ipv4 
                            (Printf.sprintf "10.2.%d.2" dev_id) in 
             lwt _ = Tap.setup_dev dev_id ip in 
+            lwt _ = Lwt_unix.sleep 0.0 in
             lwt _ = setup_flows dev local_ip rem_ip in
               return(ip))
 
@@ -318,6 +321,7 @@ module Manager = struct
           let ip = Printf.sprintf "10.2.%s.2" remote_dev in 
           let gw_ip = Printf.sprintf "10.2.%s.1" remote_dev in 
           lwt _ = Tap.setup_dev local_dev ip in                 
+          lwt _ = Lwt_unix.sleep 0.0 in
           let dev = Printf.sprintf "tap%d" local_dev in
           let local_ip = Uri_IP.string_to_ipv4 
                            (Printf.sprintf "10.2.%d.2" local_dev) in  
@@ -336,6 +340,9 @@ module Manager = struct
       | _ -> 
           Printf.eprintf "[ssh] Invalid connect kind %s\n%!" kind;
           raise (SshError "Invalid connect kind")
+      with exn ->
+        Printf.eprintf "[ssh]Error:%s\n%!" (Printexc.to_string exn);
+        raise (SshError(Printexc.to_string exn))
 
   (*************************************************************************
    *             TEARDOWN methods of tactic
