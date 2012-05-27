@@ -23,6 +23,17 @@ open Printf
 
 module OP = Ofpacket
 
+type tap_det = {
+    mutable dev_id: int;
+}
+
+let tap_state = {dev_id=0;}
+
+let get_new_dev_ip () =
+  let dev_id = tap_state.dev_id in 
+    tap_state.dev_id <- tap_state.dev_id + 1;
+    dev_id
+
 let setup_dev dev_id ip =
   let dev = Printf.sprintf "tap%d" dev_id in 
   lwt _ = Lwt_unix.system 

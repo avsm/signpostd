@@ -24,6 +24,7 @@ open Printf
 let ssh_port = 10000
 
 module OP = Ofpacket
+module OC = Controller
 
 module Manager = struct
   exception SshError of string
@@ -167,7 +168,49 @@ module Manager = struct
   (*******************************************************************
    *    connection functions     
    *******************************************************************)
+  let setup_flows dev local_ip rem_ip = 
 
+    let controller = (List.hd Sp_controller.
+                      switch_data.Sp_controller.of_ctrl) in 
+    let dpid = 
+      (List.hd Sp_controller.switch_data.Sp_controller.dpid)  in
+    let flow_wild = OP.Wildcards.({
+      in_port=true; dl_vlan=true; dl_src=true; dl_dst=true;
+      dl_type=false; nw_proto=true; tp_dst=true; tp_src=true;
+      nw_dst=(char_of_int 0); nw_src=(char_of_int 32);
+      dl_vlan_pcp=true; nw_tos=true;}) in
+    let flow = OP.Match.create_flow_match flow_wild 
+                 ~dl_type:(0x0800) ~nw_dst:rem_ip () in
+    let Some(port) = Net_cache.Port_cache.dev_to_port_id dev in
+    let actions = [ OP.Flow.Set_nw_dst(rem_ip);
+                    OP.Flow.Output((OP.Port.port_of_int port), 
+                                   2000);] in
+    let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.ADD 
+                ~buffer_id:(-1) actions () in 
+    let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
+    lwt _ = OC.send_of_data controller dpid bs in
+      
+    let ip_stream = (Unix.open_process_in
+                       (Config.dir ^ 
+                        "/client_tactics/get_local_dev_ip br0")) in
+    let ips = Re_str.split (Re_str.regexp " ") (input_line ip_stream) in 
+    let _::_::mac::_ = ips in
+
+    let flow_wild = OP.Wildcards.({
+      in_port=false; dl_vlan=true; dl_src=true; dl_dst=true;
+      dl_type=false; nw_proto=true; tp_dst=true; tp_src=true;
+      nw_dst=(char_of_int 0); nw_src=(char_of_int 32);
+      dl_vlan_pcp=true; nw_tos=true;}) in
+    let flow = OP.Match.create_flow_match flow_wild 
+                 ~in_port:port ~dl_type:(0x0800) 
+                 ~nw_dst:local_ip () in
+    let actions = [ OP.Flow.Set_nw_dst(local_ip);
+                    OP.Flow.Set_dl_dst(mac);
+                    OP.Flow.Output(OP.Port.Local, 2000);] in
+    let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.ADD 
+                ~buffer_id:(-1) actions () in 
+    let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
+      OC.send_of_data controller dpid bs
 
   let server_add_client domain dev_id = 
     Printf.printf "[ssh] Adding new permitted key from domain %s\n%!" domain;
@@ -247,11 +290,19 @@ module Manager = struct
 
   let connect kind args =
     match kind with
-      | "server" ->
+      | "server" -> (
           let dev_id = Tap.get_new_dev_ip () in 
             server_add_client (List.hd args) dev_id;
+            let dev = Printf.sprintf "tap%d" dev_id in
             let ip = Printf.sprintf "10.2.%d.1" dev_id in 
-              Tap.setup_dev dev_id ip
+            let local_ip = Uri_IP.string_to_ipv4 
+                           (Printf.sprintf "10.2.%d.1" dev_id) in  
+            let rem_ip = Uri_IP.string_to_ipv4 
+                           (Printf.sprintf "10.2.%d.2" dev_id) in 
+            lwt _ = Tap.setup_dev dev_id ip in 
+            lwt _ = setup_flows dev local_ip rem_ip in
+              return(ip))
+
       | "client" ->
           let server_ip = List.nth args 0 in 
           let server_port = (int_of_string (List.nth args 1)) in 
@@ -267,7 +318,13 @@ module Manager = struct
           let ip = Printf.sprintf "10.2.%s.2" remote_dev in 
           let gw_ip = Printf.sprintf "10.2.%s.1" remote_dev in 
           lwt _ = Tap.setup_dev local_dev ip in                 
-            
+          let dev = Printf.sprintf "tap%d" local_dev in
+          let local_ip = Uri_IP.string_to_ipv4 
+                           (Printf.sprintf "10.2.%d.2" local_dev) in  
+          let rem_ip = Uri_IP.string_to_ipv4 
+                         (Printf.sprintf "10.2.%d.1" local_dev) in 
+          lwt _ = setup_flows dev local_ip rem_ip in
+           
             (* TODO: temporary hack to allow 2 nodes to talk when connected 
             * over the server. I need to set 2 different subnets. With the 
             * usage of openflow, this can be corrected. *) 

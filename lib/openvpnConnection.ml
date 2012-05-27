@@ -70,7 +70,8 @@ let start_vpn_server node port client domain =
   try_lwt
     let rpc = (Rpc.create_tactic_request "openvpn" 
       Rpc.CONNECT "server" [(string_of_int openvpn_port); 
-                            client;domain;]) in
+                            client;domain;
+                            (Uri_IP.ipv4_to_string (Nodes.get_sp_ip client))]) in
       Nodes.send_blocking node rpc
   with ex -> 
     Printf.printf "[openvpn ]Failed openvpn server %s:%s\n%!" node
@@ -80,8 +81,9 @@ let start_vpn_server node port client domain =
 let start_vpn_client dst_ip host dst_port node domain = 
   let rpc = (Rpc.create_tactic_request "openvpn" 
   Rpc.CONNECT "client" [dst_ip; 
-                        (string_of_int openvpn_port); 
-                        node;domain;]) in
+                        (string_of_int openvpn_port);node;domain;
+                        (Uri_IP.ipv4_to_string 
+                           (Nodes.get_sp_ip node))]) in
   try
     lwt res = (Nodes.send_blocking host rpc) in 
         return (res)

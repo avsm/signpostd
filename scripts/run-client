@@ -31,4 +31,9 @@ SIG_PORT=42425
 # delete all arp entries, so that we will discover them using openflow
 arp -n | awk '/(^[0-9]+\.?)+/ {print $1;}' | xargs -I '{}' arp -d '{}'
 
+ovs-dpctl show br0 | grep tap | awk '{print $3}' \
+  | xargs -I '{}' ovs-dpctl del-if br0  '{}'
+ip addr show  dev br0 | grep 10\\.2\\. | awk '{print $2;}' \
+  |  xargs -I '{}'  ip addr del  '{}' dev br0
+
 ./client.native $NODE_NAME $IP $SIG_PORT
