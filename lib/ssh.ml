@@ -186,7 +186,7 @@ module Manager = struct
                     OP.Flow.Output((OP.Port.port_of_int port), 
                                    2000);] in
     let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.ADD 
-                ~idle_timeout:0  ~buffer_id:(-1) actions () in 
+                ~buffer_id:(-1) actions () in 
     let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
     lwt _ = OC.send_of_data controller dpid bs in
       
@@ -324,9 +324,9 @@ module Manager = struct
           lwt _ = Lwt_unix.sleep 0.0 in
           let dev = Printf.sprintf "tap%d" local_dev in
           let local_ip = Uri_IP.string_to_ipv4 
-                           (Printf.sprintf "10.2.%d.2" local_dev) in  
+                           (Printf.sprintf "10.2.%s.2" remote_dev) in  
           let rem_ip = Uri_IP.string_to_ipv4 
-                         (Printf.sprintf "10.2.%d.1" local_dev) in 
+                         (Printf.sprintf "10.2.%s.1" remote_dev) in 
           lwt _ = setup_flows dev local_ip rem_ip in
            
             (* TODO: temporary hack to allow 2 nodes to talk when connected 
