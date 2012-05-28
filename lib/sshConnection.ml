@@ -66,7 +66,9 @@ let start_ssh_server node port client_name =
                     (sprintf ".d%d.%s" Config.signpost_number 
                        Config.domain) in 
   let rpc = (Rpc.create_tactic_request "ssh" 
-               Rpc.CONNECT "server" [remote_host;]) in
+               Rpc.CONNECT "server" 
+               [remote_host; (Uri_IP.ipv4_to_string 
+                                (Nodes.get_sp_ip node))]) in
     try
       lwt res = (Nodes.send_blocking node rpc) in 
   return (res)
@@ -83,9 +85,10 @@ let start_ssh_client host dst_ip dst_port node vpn_subnet =
   let remote_host = (node^ (sprintf ".d%d.%s" 
                              Config.signpost_number Config.domain)) in
   let rpc = (Rpc.create_tactic_request "ssh" 
-               Rpc.CONNECT "client" [dst_ip; 
-                                     (string_of_int ssh_port);
-                                     remote_host; vpn_subnet;]) in
+               Rpc.CONNECT "client" 
+               [dst_ip; (string_of_int ssh_port); remote_host; 
+                vpn_subnet;(Uri_IP.ipv4_to_string 
+                              (Nodes.get_sp_ip node));]) in
     try
       lwt res = (Nodes.send_blocking host rpc) in 
   return (res)
@@ -127,12 +130,14 @@ let start_local_server a b =
                        (Printf.sprintf "10.2.%d.2" dev_id) in 
         lwt _ = Tap.setup_dev dev_id ip in 
         let rpc = (Rpc.create_tactic_request "ssh" 
-                 Rpc.CONNECT "client" [Config.external_ip; 
-                                     (string_of_int ssh_port);
-                                     domain; ip;]) in
+                 Rpc.CONNECT "client" 
+                     [Config.external_ip; (string_of_int ssh_port);
+                      domain; ip; 
+                      (Uri_IP.ipv4_to_string (Nodes.get_sp_ip node));]) in
         lwt res = (Nodes.send_blocking node rpc) in 
         lwt _ = Lwt_unix.sleep 0.0 in  
-        lwt _ = Ssh.Manager.setup_flows dev local_ip rem_ip in
+        lwt _ = Ssh.Manager.setup_flows dev local_ip rem_ip 
+                  (Nodes.get_sp_ip node) in
           return (res)
   in
   try_lwt
