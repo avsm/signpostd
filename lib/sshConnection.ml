@@ -68,7 +68,7 @@ let start_ssh_server node port client_name =
   let rpc = (Rpc.create_tactic_request "ssh" 
                Rpc.CONNECT "server" 
                [remote_host; (Uri_IP.ipv4_to_string 
-                                (Nodes.get_sp_ip node))]) in
+                                (Nodes.get_sp_ip client_name))]) in
     try
       lwt res = (Nodes.send_blocking node rpc) in 
   return (res)
@@ -109,12 +109,48 @@ let init_ssh a b ip =
                a_ip in
   return (a_ip, b_ip)
 
+let setup_cloud_flows a_dev b_dev = 
+    let controller = (List.hd Sp_controller.
+                      switch_data.Sp_controller.of_ctrl) in 
+    let dpid = 
+      (List.hd Sp_controller.switch_data.Sp_controller.dpid)  in
+    let a_dev_str = Printf.sprintf "tap%d" a_dev in
+    let b_dev_str = Printf.sprintf "tap%d" b_dev in
+    let Some(a_port) = Net_cache.Port_cache.dev_to_port_id a_dev_str in
+    let Some(b_port) = Net_cache.Port_cache.dev_to_port_id b_dev_str in
+    let a_ip =Uri_IP.string_to_ipv4 (sprintf "10.2.%d.2" a_dev) in 
+    let b_ip =Uri_IP.string_to_ipv4 (sprintf "10.2.%d.2" b_dev) in 
+    let flow_wild = OP.Wildcards.({
+      in_port=false; dl_vlan=true; dl_src=true; dl_dst=true;
+      dl_type=false; nw_proto=true; tp_dst=true; tp_src=true;
+      nw_dst=(char_of_int 0); nw_src=(char_of_int 32);
+      dl_vlan_pcp=true; nw_tos=true;}) in
+    let flow = OP.Match.create_flow_match flow_wild 
+                 ~in_port:a_port ~dl_type:(0x0800) 
+                 ~nw_dst:b_ip () in
+    let actions = [OP.Flow.Output((OP.Port.port_of_int b_port), 
+                                   2000);] in
+    let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.ADD 
+                ~idle_timeout:0 ~buffer_id:(-1) actions () in 
+    let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
+    lwt _ = OC.send_of_data controller dpid bs in
+    let flow = OP.Match.create_flow_match flow_wild 
+                 ~in_port:b_port ~dl_type:(0x0800) 
+                 ~nw_dst:a_ip () in
+    let actions = [OP.Flow.Output((OP.Port.port_of_int a_port), 
+                                   2000);] in
+    let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.ADD 
+                ~idle_timeout:0 ~buffer_id:(-1) actions () in 
+    let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
+      OC.send_of_data controller dpid bs
+
+
 let start_local_server a b =
   (* Maybe load a copy of the Openvpn module and let it 
    * do the magic? *)
   printf "[ssh] Starting ssh server...\n%!";
   lwt _ = Ssh.Manager.run_server () in 
-  let connect_client node =
+  let connect_client node dst_node =
     let domain = (sprintf "d%d.%s" 
     Config.signpost_number Config.domain) in 
     let host =  (node^ "." ^ domain) in 
@@ -133,15 +169,24 @@ let start_local_server a b =
                  Rpc.CONNECT "client" 
                      [Config.external_ip; (string_of_int ssh_port);
                       domain; ip; 
-                      (Uri_IP.ipv4_to_string (Nodes.get_sp_ip node));]) in
+                      (Uri_IP.ipv4_to_string (Nodes.get_sp_ip dst_node));]) in
         lwt res = (Nodes.send_blocking node rpc) in 
         lwt _ = Lwt_unix.sleep 0.0 in  
+(*
         lwt _ = Ssh.Manager.setup_flows dev local_ip rem_ip 
                   (Nodes.get_sp_ip node) in
-          return (res)
+ *)
+          return (dev_id)
   in
   try_lwt
-    lwt [a_ip; b_ip ] = Lwt_list.map_p connect_client [a; b] in
+    lwt a_dev = connect_client a b in 
+    lwt b_dev = connect_client b a in
+(*
+    lwt [a_dev; b_dev ] = Lwt_list.map_p connect_client [a; b] in
+ *)
+    lwt _ = setup_cloud_flows a_dev b_dev in 
+    let a_ip =Uri_IP.string_to_ipv4 (sprintf "10.2.%d.1" a_dev) in 
+    let b_ip =Uri_IP.string_to_ipv4 (sprintf "10.2.%d.1" b_dev) in 
       return [a_ip; b_ip]
   with ex ->
     Printf.printf "[ssh] client fail %s\n%!" (Printexc.to_string ex);
@@ -168,7 +213,7 @@ let connect a b =
           return (true)
       ) else (
         Printf.printf "[ssh] Connecting through server\n%!";
-        lwt _ = start_local_server a b  in
+        lwt _ = start_local_server b a in
           return (true)
       )
 
