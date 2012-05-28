@@ -15,6 +15,14 @@
  *)
 
 
+type handle = 
+  | Name of Sp.name
+  | Wildcard
+
+type address =
+  | Address of Sp.addressable
+  | NoAddress
+
 type status =
   | IN_PROGRESS
   | OK
