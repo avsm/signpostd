@@ -338,6 +338,9 @@ module Manager = struct
           lwt _ = Lwt_unix.system 
                     (Printf.sprintf "route add -net 10.2.0.0/16 gw %s" 
                        gw_ip) in              
+          lwt _ = Lwt_unix.system 
+                    (Printf.sprintf "route add -net 172.31.0.0/16 gw %s" 
+                       gw_ip) in              
             client_connect server_ip server_port 
               (string_of_int local_dev) remote_dev subnet  
       | _ -> 
