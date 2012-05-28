@@ -152,10 +152,9 @@ module Manager = struct
       | "client" -> (
           try_lwt
             let _ :: ips = args in 
-
             lwt ip = ((lwt _ = Lwt_unix.sleep 2.0 in 
                          failwith("client can't connect") ) 
-                        <?> run_client ssh_port ips) in
+                        <?> (run_client ssh_port ips)) in
               return (ip)
           with ex ->
             Printf.printf "[ssh] failed to start client: %s\n%!" 
@@ -168,7 +167,7 @@ module Manager = struct
   (*******************************************************************
    *    connection functions     
    *******************************************************************)
-  let setup_flows dev local_ip rem_ip = 
+  let setup_flows dev local_ip rem_ip sp_ip = 
 
     let controller = (List.hd Sp_controller.
                       switch_data.Sp_controller.of_ctrl) in 
@@ -180,7 +179,7 @@ module Manager = struct
       nw_dst=(char_of_int 0); nw_src=(char_of_int 32);
       dl_vlan_pcp=true; nw_tos=true;}) in
     let flow = OP.Match.create_flow_match flow_wild 
-                 ~dl_type:(0x0800) ~nw_dst:rem_ip () in
+                 ~dl_type:(0x0800) ~nw_dst:sp_ip () in
     let Some(port) = Net_cache.Port_cache.dev_to_port_id dev in
     let actions = [ OP.Flow.Set_nw_dst(rem_ip);
                     OP.Flow.Output((OP.Port.port_of_int port), 
@@ -206,6 +205,7 @@ module Manager = struct
                  ~in_port:port ~dl_type:(0x0800) 
                  ~nw_dst:local_ip () in
     let actions = [ OP.Flow.Set_nw_dst(local_ip);
+                    OP.Flow.Set_nw_src(sp_ip);
                     OP.Flow.Set_dl_dst(mac);
                     OP.Flow.Output(OP.Port.Local, 2000);] in
     let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.ADD 
@@ -293,7 +293,8 @@ module Manager = struct
     try_lwt
     match kind with
       | "server" -> (
-          let dev_id = Tap.get_new_dev_ip () in 
+          let dev_id = Tap.get_new_dev_ip () in
+          let remote_name::sp_ip::_ =  args in 
             server_add_client (List.hd args) dev_id;
             let dev = Printf.sprintf "tap%d" dev_id in
             let ip = Printf.sprintf "10.2.%d.1" dev_id in 
@@ -303,7 +304,8 @@ module Manager = struct
                            (Printf.sprintf "10.2.%d.2" dev_id) in 
             lwt _ = Tap.setup_dev dev_id ip in 
             lwt _ = Lwt_unix.sleep 0.0 in
-            lwt _ = setup_flows dev local_ip rem_ip in
+            lwt _ = setup_flows dev local_ip rem_ip 
+                      (Uri_IP.string_to_ipv4 sp_ip) in
               return(ip))
 
       | "client" ->
@@ -311,6 +313,7 @@ module Manager = struct
           let server_port = (int_of_string (List.nth args 1)) in 
           let domain = List.nth args 2 in 
           let subnet = List.nth args 3 in 
+          let sp_ip = Uri_IP.string_to_ipv4 (List.nth args 4) in 
           let local_dev = Tap.get_new_dev_ip () in        
           lwt _ = client_add_server domain server_ip 
                     server_port local_dev in 
@@ -327,7 +330,7 @@ module Manager = struct
                            (Printf.sprintf "10.2.%s.2" remote_dev) in  
           let rem_ip = Uri_IP.string_to_ipv4 
                          (Printf.sprintf "10.2.%s.1" remote_dev) in 
-          lwt _ = setup_flows dev local_ip rem_ip in
+          lwt _ = setup_flows dev local_ip rem_ip sp_ip in
            
             (* TODO: temporary hack to allow 2 nodes to talk when connected 
             * over the server. I need to set 2 different subnets. With the 
