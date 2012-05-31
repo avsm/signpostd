@@ -59,16 +59,74 @@ let switch_data = { mac_cache = Hashtbl.create 0;
                     cb_register = (Hashtbl.create 64);
                   } 
 
-let datapath_join_cb _ _ evt =
+let preinstall_flows controller dpid port_id actions = 
+  (* A few rules to reduce load on the control channel *)
+  let flow_wild = OP.Wildcards.({
+    in_port=false; dl_vlan=true; dl_src=true; dl_dst=false;
+    dl_type=true; nw_proto=true; tp_dst=true; tp_src=true;
+    nw_dst=(char_of_int 32); nw_src=(char_of_int 32);
+    dl_vlan_pcp=true; nw_tos=true;}) in
+
+  (* forward broadcast traffic to output port *)
+  let flow = OP.Match.create_flow_match flow_wild 
+               ~in_port:(OP.Port.int_of_port port_id)
+               ~dl_dst:"\xff\xff\xff\xff\xff\xff" () in
+  let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.ADD 
+              ~idle_timeout:0 ~buffer_id:(-1) actions () in 
+  let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
+  lwt _ = OC.send_of_data controller dpid bs in
+
+  (* forward incomming multicast dns to local port. *)
+  let flow = OP.Match.create_flow_match flow_wild 
+               ~in_port:(OP.Port.int_of_port port_id) 
+               ~dl_dst:"\x01\x00\x5e\x00\x00\xfb" () in
+  let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.ADD 
+              ~idle_timeout:0 ~buffer_id:(-1) actions () in 
+  let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
+  lwt _ = OC.send_of_data controller dpid bs in
+
+  (* forward ipv6 traffic without asking 0x86dd *)
+  let flow_wild = OP.Wildcards.({
+    in_port=false; dl_vlan=true; dl_src=true; dl_dst=true;
+    dl_type=false; nw_proto=true; tp_dst=true; tp_src=true;
+    nw_dst=(char_of_int 32); nw_src=(char_of_int 32);
+    dl_vlan_pcp=true; nw_tos=true;}) in
+  let flow = OP.Match.create_flow_match flow_wild 
+               ~in_port:(OP.Port.int_of_port port_id)
+               ~dl_type:0x86dd () in
+  let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.ADD 
+              ~idle_timeout:0 ~buffer_id:(-1) actions () in 
+  let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
+  lwt _ = OC.send_of_data controller dpid bs in
+  return ()
+
+let datapath_join_cb controller dpid evt =
   let (ports, dp) = 
     match evt with
       | OE.Datapath_join (ports, c) -> (ports, c)
       | _ -> invalid_arg "bogus datapath_join event match!" 
   in
     Printf.printf "received %d ports\n%!" (List.length ports);
-    List.iter ( fun port -> 
-                    Net_cache.Port_cache.add_dev port.OP.Port.name port.OP.Port.port_id
+    let action_ports = ref [] in
+      (* I have the assumption that my initial setup contains only
+      * local interfaces and not signpost *)
+    List.iter ( 
+      fun port -> 
+        let _ = Net_cache.Port_cache.add_dev 
+          port.OP.Port.name port.OP.Port.port_id in
+        let actions = [OP.Flow.Output(OP.Port.Local, 2000);] in
+          match port.OP.Port.port_id with
+            | 0xfffe -> ()
+            | _ ->
+          (Lwt.ignore_result 
+            (preinstall_flows controller dpid 
+               (OP.Port.port_of_int port.OP.Port.port_id) actions);
+          action_ports := !action_ports @ 
+            [OP.Flow.Output((OP.Port.port_of_int port.OP.Port.port_id),
+                            2000);])
     ) ports;
+
+  lwt _ = preinstall_flows controller dpid OP.Port.Local (!action_ports) in 
   switch_data.dpid <- switch_data.dpid @ [dp];
   return (pp "+ datapath:0x%012Lx\n%!" dp)
 
@@ -76,13 +134,17 @@ let port_status_cb _ _ evt =
   let _ = 
     match evt with
       | OE.Port_status (OP.Port.ADD, port, _) -> 
-          pp "[openflow] device added %s %d\n%!" port.OP.Port.name port.OP.Port.port_id;
-          Net_cache.Port_cache.add_dev port.OP.Port.name port.OP.Port.port_id
+          pp "[openflow] device added %s %d\n%!" 
+            port.OP.Port.name port.OP.Port.port_id;
+          Net_cache.Port_cache.add_dev port.OP.Port.name 
+            port.OP.Port.port_id
       | OE.Port_status (OP.Port.DEL, port, _) -> 
-          pp "[openflow] device removed %s %d\n%!" port.OP.Port.name port.OP.Port.port_id;
+          pp "[openflow] device removed %s %d\n%!" 
+            port.OP.Port.name port.OP.Port.port_id;
           Net_cache.Port_cache.del_dev port.OP.Port.name
       | OE.Port_status (OP.Port.MOD, port, _) -> 
-          pp "[openflow] device modilfied %s %d\n%!" port.OP.Port.name port.OP.Port.port_id
+          pp "[openflow] device modilfied %s %d\n%!" 
+            port.OP.Port.name port.OP.Port.port_id
       | _ -> invalid_arg "bogus datapath_join event match!" 
   in
     return ()
@@ -108,7 +170,7 @@ let switch_packet_in_cb controller dpid buffer_id m data in_port =
   let ix = m.OP.Match.dl_src in
   let _ = match ix with
     | "\xff\xff\xff\xff\xff\xff" -> ()
-    | "\xfe\xff\xff\xff\xff\xff" -> ()
+(*     | "\xfe\xff\xff\xff\xff\xff" -> () *)
     | _ -> (
         add_entry_in_hashtbl switch_data.mac_cache ix in_port;
         Net_cache.Port_cache.add_mac ix (OP.Port.int_of_port in_port)
@@ -128,9 +190,10 @@ let switch_packet_in_cb controller dpid buffer_id m data in_port =
       if ( (OP.eaddr_is_broadcast ix)
         || (not (Hashtbl.mem switch_data.mac_cache ix)) ) 
       then (
-        let pkt = OP.Packet_out.create
-                    ~buffer_id:buffer_id ~actions:[ OP.(Flow.Output(Port.All , 2000))] 
-                    ~data:data ~in_port:in_port () 
+        let pkt = 
+              OP.Packet_out.create
+                ~buffer_id:buffer_id ~actions:[ OP.(Flow.Output(Port.All , 2000))] 
+                ~data:data ~in_port:in_port () 
         in
         let bs = OP.Packet_out.packet_out_to_bitstring pkt in 
           OC.send_of_data controller dpid bs
@@ -151,10 +214,6 @@ let lookup_flow of_match =
   let lookup_flow flow entry =
     if (OP.Match.flow_match_compare of_match flow
           flow.OP.Match.wildcards) then (
-(*
-            Printf.printf "[openflow] Found callback for %s \n%!"
-              (OP.Match.match_to_string of_match);
- *)
             ret_lst := (!ret_lst) @ [entry]
           )
   in
@@ -193,13 +252,13 @@ let init controller =
   OC.register_cb controller OE.PORT_STATUS_CHANGE port_status_cb
 
 let add_dev dev ip netmask =
-  lwt _ = Lwt_unix.system ("ovs-vsctl --db=unix:/var/run/ovsdb-server "^
+  lwt _ = Lwt_unix.system ("ovs-vsctl  "^
                            " add-port br0 " ^ dev) in 
   lwt _ = Lwt_unix.system (Printf.sprintf "ip addr add %s/%s dev br0" ip netmask) in
   return ()
 
 let del_dev dev ip netmask =
-  lwt _ = Lwt_unix.system ("ovs-vsctl --db=unix:/var/run/ovsdb-server "^
+  lwt _ = Lwt_unix.system ("ovs-vsctl  "^
                            " del-port br0 " ^ dev) in 
   lwt _ = Lwt_unix.system (Printf.sprintf "ip addr del %s/%s dev br0" ip netmask) in
   return ()
