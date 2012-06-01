@@ -60,7 +60,7 @@ let handle_hello src_ip args =
 (*   eprintf "About to check for publicly accesible ips\n%!"; *)
   Nodes.check_for_publicly_accessible_ips node local_ips >>= fun public_ips -> 
 (*     eprintf "Got public ips... store them\n%!"; *)
-    Connections.set_public_ips node public_ips;
+(*     Connections.set_public_ips node public_ips; *)
     return ()
 
 let handle_request src_ip command arg_list =

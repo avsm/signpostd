@@ -20,23 +20,26 @@ open Printf
 
 
 let tactics = [
-  (module DirectConnection : Sp.TacticSig);
-  (module OpenvpnConnection : Sp.TacticSig);
+(*   (module DirectConnection : Sp.TacticSig); *)
+(*   (module OpenvpnConnection : Sp.TacticSig); *)
 (*   (module PrivoxyConnection : Sp.TacticSig);  *)
 (*   (module TorConnection : Sp.TacticSig);  *)
-(*   (module SshConnection : Sp.TacticSig); *)
+ (module SshConnection : Sp.TacticSig); 
 (*   (module AvahiConnection : Sp.TacticSig); *)
 (*   (module NatpunchConnection : Sp.TacticSig); *)
   ]
 
 let tactics_not_attempted_or_failed_for a b =
-  let tactic_status_fn = Connections.get_tactic_status_for a b in
+  let tactic_status_fn = 
+    Connections.get_tactic_status a b in
   List.filter (fun t ->
     let module Tactic = (val t : Sp.TacticSig) in
     let name = Tactic.name () in
     try
-      tactic_status_fn name;
-      false
+      match (tactic_status_fn name) with
+        | Connections.SUCCESS_INACTIVE
+        | Connections.SUCCESS_ACTIVE -> false
+        | _ -> true
     with Not_found ->
       true
   ) tactics
@@ -44,12 +47,24 @@ let tactics_not_attempted_or_failed_for a b =
 let iter_over_tactics wakener a b =
   Lwt_list.iter_p (fun t ->
     let module Tactic = (val t : Sp.TacticSig) in
-    lwt res = Tactic.connect a b in
+    let _ = match (Connections.get_link_status a b) with 
+      | Connections.FAILED ->
+      Connections.store_tactic_state a b (Tactic.name ()) 
+        Connections.IN_PROGRESS None 
+      | _ -> () 
+    in
+    lwt res = Tactic.connect a b in 
+(*     lwt _ = Lwt_unix.sleep 20.0 in  *)
+    let res =true in 
     match res with
       | false -> 
           Printf.printf "XXXXX tactic %s failed\n%!" (Tactic.name ());
           return ()
-      | true -> return(Lwt.wakeup wakener "")
+      | true ->       
+          Connections.store_tactic_state a b 
+            (Tactic.name ()) Connections.SUCCESS_ACTIVE 
+            None;
+          return(Lwt.wakeup wakener "")
   ) (tactics_not_attempted_or_failed_for a b)
 
 let connect wakener a b =
@@ -86,11 +101,23 @@ let find a b =
   eprintf "Finding existing connections between %s and %s\n" a b;
 (*   eprintf "Trying to establish new ones\n"; *)
   try_lwt
-    let ret = Uri_IP.ipv4_to_string (Nodes.get_sp_ip b) in
-    let waiter, wakener = Lwt.task () in 
-    let _ = Lwt.ignore_result(connect wakener a b) in
-    lwt _ =  waiter in 
-      return (Sp.IPAddressInstance(ret))
+    match (Connections.get_link_status a b) with 
+      | Connections.FAILED -> (
+          Printf.printf "XXXXXXXXXX failed tactic\n%!";
+          let ret = Uri_IP.ipv4_to_string (Nodes.get_sp_ip b) in
+          let waiter, wakener = Lwt.task () in 
+          let _ = Lwt.ignore_result(connect wakener a b) in
+          lwt _ =  waiter in 
+            return (Sp.IPAddressInstance(ret)) )
+      | Connections.IN_PROGRESS ->
+          Printf.printf "XXXXXXXXXX waiting for tactic\n%!";
+          lwt _ = Connections.wait_for_link a b in
+            return(Sp.IPAddressInstance(
+              (Uri_IP.ipv4_to_string (Nodes.get_sp_ip b))))
+      | Connections.SUCCESS_ACTIVE
+      | Connections.SUCCESS_INACTIVE-> 
+          return(Sp.IPAddressInstance(
+          (Uri_IP.ipv4_to_string (Nodes.get_sp_ip b))))
   with exn ->
     Printf.printf "[Nodes] cannot find node %s \n%!" b;
     return(Sp.Unreachable)

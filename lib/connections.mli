@@ -15,35 +15,45 @@
  *)
 
 
-type handle = 
-  | Name of Sp.name
-  | Wildcard
-
-type address =
-  | Address of Sp.addressable
-  | NoAddress
-
-type status =
+type link_state = 
+  | SUCCESS_INACTIVE
+  | SUCCESS_ACTIVE
   | IN_PROGRESS
-  | OK
   | FAILED
 
-val lookup : Sp.name -> Sp.name -> Sp.addressable list
+(* val lookup : Sp.name -> Sp.name -> Sp.addressable list *)
 
 (** Stores the results of a tactc.
  *  It will replace earlier results from the same tactic
  *  if such already exist.
  *)
+(*
 val store_addresses : Sp.name -> Sp.name -> Rpc.tactic_name -> status -> (Sp.ip * Sp.ip) list -> unit
+ *)
+val store_tactic_state : Sp.name -> Sp.name -> 
+      Rpc.tactic_name -> link_state -> int option -> unit
 
 (** Stores all known public IPs for a named entity.
  *  It should not be used to store new public IPs that result
  *  from setting up channels using tactics
  *)
-val set_public_ips : Sp.name -> Sp.ip list -> unit
+(* val set_public_ips : Sp.name -> Sp.ip list -> unit *)
 
 (** Returns the status of a previously run tactic for
  *  a pair of nodes. Raises Not_found, if a tactic has
  *  not previously been run for the named pair 
  *)
-val get_tactic_status_for : Sp.name -> Sp.name -> Rpc.tactic_name -> status
+val wait_for_link : Sp.name -> Sp.name -> link_state Lwt.t
+
+(** Returns the status of a previously run tactic for
+ *  a pair of nodes. Raises Not_found, if a tactic has
+ *  not previously been run for the named pair 
+ *)
+val get_link_status : Sp.name -> Sp.name -> link_state
+
+(** Returns the status of a previously run tactic for
+ *  a pair of nodes. Raises Not_found, if a tactic has
+ *  not previously been run for the named pair 
+ *)
+val get_tactic_status : Sp.name -> Sp.name -> 
+  Rpc.tactic_name -> link_state
