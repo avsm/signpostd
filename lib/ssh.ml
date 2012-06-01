@@ -181,7 +181,27 @@ module Manager = struct
     let flow = OP.Match.create_flow_match flow_wild 
                  ~dl_type:(0x0800) ~nw_dst:sp_ip () in
     let Some(port) = Net_cache.Port_cache.dev_to_port_id dev in
-    let actions = [ OP.Flow.Set_nw_dst(rem_ip);
+    let actions = [ OP.Flow.Set_nw_src(local_ip);
+(*
+                    OP.Flow.Set_nw_dst(rem_ip);
+                    OP.Flow.Output((OP.Port.port_of_int port), 
+                                   2000);] in
+    let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.ADD 
+                ~idle_timeout:0 ~buffer_id:(-1) actions () in 
+    let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
+    lwt _ = OC.send_of_data controller dpid bs in
+
+  let flow_wild = OP.Wildcards.({
+      in_port=true; dl_vlan=true; dl_src=true; dl_dst=true;
+      dl_type=false; nw_proto=true; tp_dst=true; tp_src=true;
+      nw_dst=(char_of_int 0); nw_src=(char_of_int 32);
+      dl_vlan_pcp=true; nw_tos=true;}) in
+    let flow = OP.Match.create_flow_match flow_wild 
+                 ~dl_type:(0x0800) ~nw_dst:rem_ip () in
+    let Some(port) = Net_cache.Port_cache.dev_to_port_id dev in
+    let actions = [ OP.Flow.Set_nw_src(local_ip);
+ *)
+                    OP.Flow.Set_nw_dst(rem_ip);
                     OP.Flow.Output((OP.Port.port_of_int port), 
                                    2000);] in
     let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.ADD 
@@ -194,7 +214,6 @@ module Manager = struct
                         "/client_tactics/get_local_device br0")) in
     let ips = Re_str.split (Re_str.regexp " ") (input_line ip_stream) in 
     let _::mac::_ = ips in
-    Printf.printf "XXXXXXXX mac %s\n%!" mac;
     let mac = Net_cache.Arp_cache.mac_of_string mac in 
     let flow_wild = OP.Wildcards.({
       in_port=false; dl_vlan=true; dl_src=true; dl_dst=true;
@@ -205,7 +224,7 @@ module Manager = struct
                  ~in_port:port ~dl_type:(0x0800) 
                  ~nw_dst:local_ip () in
     let actions = [ OP.Flow.Set_nw_dst(local_ip);
-                    OP.Flow.Set_nw_src(sp_ip);
+                     OP.Flow.Set_nw_src(sp_ip); 
                     OP.Flow.Set_dl_dst(mac);
                     OP.Flow.Output(OP.Port.Local, 2000);] in
     let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.ADD 
@@ -303,7 +322,7 @@ module Manager = struct
             let rem_ip = Uri_IP.string_to_ipv4 
                            (Printf.sprintf "10.2.%d.2" dev_id) in 
             lwt _ = Tap.setup_dev dev_id ip in 
-            lwt _ = Lwt_unix.sleep 0.0 in
+            lwt _ = Lwt_unix.sleep 1.0 in
             lwt _ = setup_flows dev local_ip rem_ip 
                       (Uri_IP.string_to_ipv4 sp_ip) in
               return(ip))
@@ -313,33 +332,28 @@ module Manager = struct
           let server_port = (int_of_string (List.nth args 1)) in 
           let domain = List.nth args 2 in 
           let subnet = List.nth args 3 in 
-          let sp_ip = Uri_IP.string_to_ipv4 (List.nth args 4) in 
+          let rem_ip = List.nth args 4 in 
+          let sp_ip = Uri_IP.string_to_ipv4 (List.nth args 5) in 
           let local_dev = Tap.get_new_dev_ip () in        
           lwt _ = client_add_server domain server_ip 
                     server_port local_dev in 
-  (* Ip address is constructed using the dev number in the 3 
-   * octet *)
+          (* Ip address is constructed using the dev number in the 3 
+           * octet *)
           let remote_dev = 
             List.nth (Re_str.split (Re_str.regexp "\\.") subnet) 2 in 
-          let ip = Printf.sprintf "10.2.%s.2" remote_dev in 
-          let gw_ip = Printf.sprintf "10.2.%s.1" remote_dev in 
-          lwt _ = Tap.setup_dev local_dev ip in                 
-          lwt _ = Lwt_unix.sleep 0.0 in
+          lwt _ = Tap.setup_dev local_dev subnet in                 
+          lwt _ = Lwt_unix.sleep 1.0 in
           let dev = Printf.sprintf "tap%d" local_dev in
-          let local_ip = Uri_IP.string_to_ipv4 
-                           (Printf.sprintf "10.2.%s.2" remote_dev) in  
-          let rem_ip = Uri_IP.string_to_ipv4 
-                         (Printf.sprintf "10.2.%s.1" remote_dev) in 
-          lwt _ = setup_flows dev local_ip rem_ip sp_ip in
+          let rem_ip = Uri_IP.string_to_ipv4 rem_ip in 
+          lwt _ = setup_flows dev (Uri_IP.string_to_ipv4 subnet) 
+                    rem_ip sp_ip in
            
             (* TODO: temporary hack to allow 2 nodes to talk when connected 
             * over the server. I need to set 2 different subnets. With the 
             * usage of openflow, this can be corrected. *) 
+          let gw_ip = Printf.sprintf "10.2.%s.1" remote_dev in 
           lwt _ = Lwt_unix.system 
                     (Printf.sprintf "route add -net 10.2.0.0/16 gw %s" 
-                       gw_ip) in              
-          lwt _ = Lwt_unix.system 
-                    (Printf.sprintf "route add -net 172.31.0.0/16 gw %s" 
                        gw_ip) in              
             client_connect server_ip server_port 
               (string_of_int local_dev) remote_dev subnet  
