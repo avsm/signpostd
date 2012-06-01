@@ -87,8 +87,9 @@ let start_ssh_client host dst_ip dst_port node vpn_subnet =
   let rpc = (Rpc.create_tactic_request "ssh" 
                Rpc.CONNECT "client" 
                [dst_ip; (string_of_int ssh_port); remote_host; 
-                vpn_subnet;(Uri_IP.ipv4_to_string 
-                              (Nodes.get_sp_ip node));]) in
+                (* TODO check this param *)
+                vpn_subnet; vpn_subnet;
+                (Uri_IP.ipv4_to_string (Nodes.get_sp_ip node));]) in
     try
       lwt res = (Nodes.send_blocking host rpc) in 
   return (res)
@@ -149,38 +150,39 @@ let start_local_server a b =
   (* Maybe load a copy of the Openvpn module and let it 
    * do the magic? *)
   printf "[ssh] Starting ssh server...\n%!";
-  lwt _ = Ssh.Manager.run_server () in 
-  let connect_client node dst_node =
+  lwt _ = Ssh.Manager.run_server () in
+
+  let create_devices host = 
+    let dev_id = Tap.get_new_dev_ip () in  
+      Ssh.Manager.server_add_client host dev_id;
+      dev_id
+  in
+  let connect_client node dst_node local_dev remote_dev =
     let domain = (sprintf "d%d.%s" 
     Config.signpost_number Config.domain) in 
     let host =  (node^ "." ^ domain) in 
       printf "[ssh] connecting host %s\n%!" host;
-      let dev_id = Tap.get_new_dev_ip () in 
-        
-        Ssh.Manager.server_add_client host dev_id;
-        let dev = Printf.sprintf "tap%d" dev_id in
-        let ip = Printf.sprintf "10.2.%d.1" dev_id in 
-        let local_ip = Uri_IP.string_to_ipv4 
-                         (Printf.sprintf "10.2.%d.1" dev_id) in  
-        let rem_ip = Uri_IP.string_to_ipv4 
-                       (Printf.sprintf "10.2.%d.2" dev_id) in 
-        lwt _ = Tap.setup_dev dev_id ip in 
-        let rpc = (Rpc.create_tactic_request "ssh" 
-                 Rpc.CONNECT "client" 
-                     [Config.external_ip; (string_of_int ssh_port);
-                      domain; ip; 
-                      (Uri_IP.ipv4_to_string (Nodes.get_sp_ip dst_node));]) in
-        lwt res = (Nodes.send_blocking node rpc) in 
-        lwt _ = Lwt_unix.sleep 0.0 in  
-(*
-        lwt _ = Ssh.Manager.setup_flows dev local_ip rem_ip 
-                  (Nodes.get_sp_ip node) in
- *)
-          return (dev_id)
+
+      let dev = Printf.sprintf "tap%d" local_dev in  
+      let local_ip = Uri_IP.string_to_ipv4 
+                       (Printf.sprintf "10.2.%d.1" local_dev) in  
+      let ip = Printf.sprintf "10.2.%d.2" local_dev in 
+      lwt _ = Tap.setup_dev local_dev ip in  
+      let rem_ip = Printf.sprintf "10.2.%d.2" remote_dev in 
+      let rpc = (Rpc.create_tactic_request "ssh" 
+                   Rpc.CONNECT "client" 
+                   [Config.external_ip; (string_of_int ssh_port);
+                    domain; ip; rem_ip;
+                    (Uri_IP.ipv4_to_string (Nodes.get_sp_ip dst_node));]) in
+      lwt res = (Nodes.send_blocking node rpc) in 
+      lwt _ = Lwt_unix.sleep 0.0 in  
+        return (local_dev)
   in
   try_lwt
-    lwt a_dev = connect_client a b in 
-    lwt b_dev = connect_client b a in
+    let a_dev = create_devices a in
+    let b_dev = create_devices b in 
+    lwt a_dev = connect_client a b a_dev b_dev in 
+    lwt b_dev = connect_client b a b_dev a_dev in
 (*
     lwt [a_dev; b_dev ] = Lwt_list.map_p connect_client [a; b] in
  *)
