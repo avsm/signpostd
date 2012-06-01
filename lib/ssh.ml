@@ -110,34 +110,36 @@ module Manager = struct
     let ret = ref None in 
     (* check if I can connect to ssh port on a remote ip *)
     let send_pkt_to wakener port ip = 
-      let buf = String.create 1500 in
-      let sock = (Lwt_unix.socket Lwt_unix.PF_INET Lwt_unix.SOCK_STREAM
-                    ((Unix.getprotobyname "tcp").Unix.p_proto)) in        
-      let ipaddr = (Unix.gethostbyname ip).Unix.h_addr_list.(0) in
-      let portaddr = Unix.ADDR_INET (ipaddr, port) in
-        try_lwt 
+      try_lwt 
+        let buf = String.create 1500 in
+        let sock = (Lwt_unix.socket Lwt_unix.PF_INET Lwt_unix.SOCK_STREAM
+                      ((Unix.getprotobyname "tcp").Unix.p_proto)) in        
+        let ipaddr = (Unix.gethostbyname ip).Unix.h_addr_list.(0) in
+        let portaddr = Unix.ADDR_INET (ipaddr, port) in
           (* TODO: Need to get a better timeout mechanism in connect phase 
            * otherwise we will wiat for 2 min *)
-          lwt _ = Lwt_unix.connect sock portaddr in 
-          (* If no data received in 2 seconds, fail the thread. *)
-          let _ = setsockopt_float sock SO_RCVTIMEO 2.0 in 
-          lwt len = Lwt_unix.recv sock buf 0 1500 [] in  
-            Printf.printf "[ssh] Received (%s) from ipaddr %s\n%!" 
-               (String.sub buf 0 len) ip;
-             lwt _ = Lwt_unix.close sock in
-             ret := Some(ip);
-             let _ = Lwt.wakeup wakener () in 
-            return () 
-        with ex ->
-          Printf.eprintf "[ssh] error in client test %s\n%!" (Printexc.to_string ex);
-          return ()
-  in
+        lwt _ = Lwt_unix.connect sock portaddr in 
+        (* If no data received in 2 seconds, fail the thread. *)
+        let _ = setsockopt_float sock SO_RCVTIMEO 2.0 in 
+        lwt len = Lwt_unix.recv sock buf 0 1500 [] in  
+          Printf.printf "[ssh] Received (%s) from ipaddr %s\n%!" 
+            (String.sub buf 0 len) ip;
+          lwt _ = Lwt_unix.close sock in
+            ret := Some(ip);
+            let _ = Lwt.wakeup wakener () in 
+              return () 
+      with
+          ex ->
+            Printf.eprintf "[ssh] error in client test %s\n%!" (Printexc.to_string ex);
+            return ()
+    in
     (* Run client test for all remote ips and return the ip that reasponded
     * first *)
-    let _, wakener = Lwt.task () in 
+    let listener, wakener = Lwt.task () in 
 (*     lwt _ = Lwt.choose [(Lwt_list.iter_p (send_pkt_to wakener port) ips);
  *     sleeper] in  *)
-     lwt _ = (Lwt_list.iter_p (send_pkt_to wakener port) ips) in
+     Lwt.ignore_result(Lwt_list.iter_p (send_pkt_to wakener port) ips);
+     lwt _ = (Lwt_unix.sleep 2.0) <?> listener in 
        printf "list iter failed\n%!";
        match (!ret) with
          | None -> raise (SshError("Error"))
@@ -173,34 +175,43 @@ module Manager = struct
                       switch_data.Sp_controller.of_ctrl) in 
     let dpid = 
       (List.hd Sp_controller.switch_data.Sp_controller.dpid)  in
+
+    (* ovs-ofctl add-flow br0 arp,in_port=local,vlan_tci=0x0000,nw_dst=10.2.0.1,actions=output:26*)
     let flow_wild = OP.Wildcards.({
-      in_port=true; dl_vlan=true; dl_src=true; dl_dst=true;
+      in_port=false; dl_vlan=true; dl_src=true; dl_dst=false;
       dl_type=false; nw_proto=true; tp_dst=true; tp_src=true;
-      nw_dst=(char_of_int 0); nw_src=(char_of_int 32);
+      nw_dst=(char_of_int 8); nw_src=(char_of_int 32);
       dl_vlan_pcp=true; nw_tos=true;}) in
     let flow = OP.Match.create_flow_match flow_wild 
-                 ~dl_type:(0x0800) ~nw_dst:sp_ip () in
+                 ~in_port:(OP.Port.int_of_port OP.Port.Local) 
+                 ~dl_type:(0x0806) ~nw_dst:rem_ip () in
     let Some(port) = Net_cache.Port_cache.dev_to_port_id dev in
-    let actions = [ OP.Flow.Set_nw_src(local_ip);
-(*
-                    OP.Flow.Set_nw_dst(rem_ip);
-                    OP.Flow.Output((OP.Port.port_of_int port), 
+    let actions = [ OP.Flow.Output((OP.Port.port_of_int port), 
                                    2000);] in
     let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.ADD 
                 ~idle_timeout:0 ~buffer_id:(-1) actions () in 
     let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
     lwt _ = OC.send_of_data controller dpid bs in
+ 
+    let flow = OP.Match.create_flow_match flow_wild 
+                 ~in_port:port ~dl_type:(0x0806) ~nw_dst:rem_ip () in
+    let Some(port) = Net_cache.Port_cache.dev_to_port_id dev in
+    let actions = [ OP.Flow.Output(OP.Port.Local, 2000);] in
+    let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.ADD 
+                ~idle_timeout:0 ~buffer_id:(-1) actions () in 
+    let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
+    lwt _ = OC.send_of_data controller dpid bs in
 
-  let flow_wild = OP.Wildcards.({
+    let flow_wild = OP.Wildcards.({
       in_port=true; dl_vlan=true; dl_src=true; dl_dst=true;
       dl_type=false; nw_proto=true; tp_dst=true; tp_src=true;
       nw_dst=(char_of_int 0); nw_src=(char_of_int 32);
       dl_vlan_pcp=true; nw_tos=true;}) in
+    
     let flow = OP.Match.create_flow_match flow_wild 
-                 ~dl_type:(0x0800) ~nw_dst:rem_ip () in
+                 ~dl_type:(0x0800) ~nw_dst:sp_ip () in
     let Some(port) = Net_cache.Port_cache.dev_to_port_id dev in
     let actions = [ OP.Flow.Set_nw_src(local_ip);
- *)
                     OP.Flow.Set_nw_dst(rem_ip);
                     OP.Flow.Output((OP.Port.port_of_int port), 
                                    2000);] in
@@ -313,7 +324,7 @@ module Manager = struct
     match kind with
       | "server" -> (
           let dev_id = Tap.get_new_dev_ip () in
-          let remote_name::sp_ip::_ =  args in 
+          let remote_name::sp_ip :: _ =  args in 
             server_add_client (List.hd args) dev_id;
             let dev = Printf.sprintf "tap%d" dev_id in
             let ip = Printf.sprintf "10.2.%d.1" dev_id in 
@@ -355,7 +366,11 @@ module Manager = struct
           lwt _ = Lwt_unix.system 
                     (Printf.sprintf "route add -net 10.2.0.0/16 gw %s" 
                        gw_ip) in              
-            client_connect server_ip server_port 
+          lwt _ = Lwt_unix.system 
+                    (Printf.sprintf "route add %s gw %s" 
+                       (Uri_IP.ipv4_to_string sp_ip) 
+                       (Uri_IP.ipv4_to_string rem_ip)) in              
+             client_connect server_ip server_port 
               (string_of_int local_dev) remote_dev subnet  
       | _ -> 
           Printf.eprintf "[ssh] Invalid connect kind %s\n%!" kind;
