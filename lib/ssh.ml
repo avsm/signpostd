@@ -178,13 +178,13 @@ module Manager = struct
 
     (* ovs-ofctl add-flow br0 arp,in_port=local,vlan_tci=0x0000,nw_dst=10.2.0.1,actions=output:26*)
     let flow_wild = OP.Wildcards.({
-      in_port=false; dl_vlan=true; dl_src=true; dl_dst=false;
+      in_port=false; dl_vlan=true; dl_src=true; dl_dst=true;
       dl_type=false; nw_proto=true; tp_dst=true; tp_src=true;
       nw_dst=(char_of_int 8); nw_src=(char_of_int 32);
       dl_vlan_pcp=true; nw_tos=true;}) in
     let flow = OP.Match.create_flow_match flow_wild 
                  ~in_port:(OP.Port.int_of_port OP.Port.Local) 
-                 ~dl_type:(0x0806) ~nw_dst:rem_ip () in
+                 ~dl_type:(0x0806) ~nw_dst:local_ip () in
     let Some(port) = Net_cache.Port_cache.dev_to_port_id dev in
     let actions = [ OP.Flow.Output((OP.Port.port_of_int port), 
                                    2000);] in
@@ -194,7 +194,7 @@ module Manager = struct
     lwt _ = OC.send_of_data controller dpid bs in
  
     let flow = OP.Match.create_flow_match flow_wild 
-                 ~in_port:port ~dl_type:(0x0806) ~nw_dst:rem_ip () in
+                 ~in_port:port ~dl_type:(0x0806) ~nw_dst:local_ip () in
     let Some(port) = Net_cache.Port_cache.dev_to_port_id dev in
     let actions = [ OP.Flow.Output(OP.Port.Local, 2000);] in
     let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.ADD 
@@ -366,10 +366,10 @@ module Manager = struct
           lwt _ = Lwt_unix.system 
                     (Printf.sprintf "route add -net 10.2.0.0/16 gw %s" 
                        gw_ip) in              
-          lwt _ = Lwt_unix.system 
-                    (Printf.sprintf "route add %s gw %s" 
-                       (Uri_IP.ipv4_to_string sp_ip) 
-                       (Uri_IP.ipv4_to_string rem_ip)) in              
+          let cmd = (Printf.sprintf "route add %s gw %s"
+                       (Uri_IP.ipv4_to_string sp_ip) gw_ip) in
+          Printf.printf "XXXXX %s\n" cmd;
+          lwt _ = Lwt_unix.system cmd in
              client_connect server_ip server_port 
               (string_of_int local_dev) remote_dev subnet  
       | _ -> 
