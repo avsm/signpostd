@@ -42,10 +42,10 @@ ip addr show  dev br0 | grep 10\\.2\\. | awk '{print $2;}' \
   |  xargs -I '{}'  ip addr del  '{}' dev br0
 
 # cleaning default links for sp addresses
-route -n | grep 172\.31\.  | xargs -I '{}' route del '{}'
+route -n | grep 172\\.31\\.  | xargs -I '{}' route del '{}'
 
 # cleanning up ssh routes
-route -n | grep 10\.2\. | awk '{print $1" netmask "$3" gw "$2;}' \
+route -n | grep 10\\.2\\. | awk '{print $1" netmask "$3" gw "$2;}' \
     | xargs -I '{}' route del -net '{}'
 
 ./client.native $NODE_NAME $IP $SIG_PORT
