@@ -8,7 +8,8 @@ cert $tmp_dir$/$domain$/vpn.crt
 key $tmp_dir$/$domain$/vpn.pem
 dh $tmp_dir$/../client_tactics/openvpn/dh1024.pem
 
-server 10.8.1.0 255.255.255.0
+#server 10.8.1.0 255.255.255.0
+server-bridge nogw
 keepalive 10 120
 client-to-client
 comp-lzo

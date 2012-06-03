@@ -92,6 +92,7 @@ module Manager = struct
                 raise (OpenVpnError("Couldn't be a udp server"))
     in
     let send_pkt_to port ip =
+      Printf.printf "testing ip %s\n%!" ip; 
       let ipaddr = (Unix.gethostbyname ip).Unix.h_addr_list.(0) in
       let portaddr = Unix.ADDR_INET (ipaddr, port) in
         lwt _ = Lwt_unix.sendto sock ip 0 (String.length ip) [] portaddr in 
@@ -99,7 +100,7 @@ module Manager = struct
     in
     lwt _ = Lwt_list.iter_p (send_pkt_to port) ips in
      try 
-       let _ = setsockopt_float sock SO_RCVTIMEO 1.0 in
+(*        let _ = setsockopt_float sock SO_RCVTIMEO 1.0 in *)
        let ret = ref "" in 
        let recv = 
          (lwt (len, _) = Lwt_unix.recvfrom sock buf 0 1500 [] in
@@ -344,14 +345,16 @@ module Manager = struct
     | "server" ->(
       try_lwt
         let port::node::domain::sp_ip::_ = args in
-(*         let dev_id = Tap.get_new_dev_ip () in *)
         lwt dev_id = get_domain_dev_id node domain port in
-        let ip = Printf.sprintf "10.2.%d.1" dev_id in
-(*
-        let ip = Nodes.discover_local_ips  
-          ~dev:("tap"^(string_of_int dev_id)) () in 
- *)
-        return (ip)
+        let dev = Printf.sprintf "tap%d" dev_id in
+        let local_ip = Uri_IP.string_to_ipv4 
+                         (Printf.sprintf "10.3.%d.1" dev_id) in  
+        let rem_ip = Uri_IP.string_to_ipv4 
+                       (Printf.sprintf "10.3.%d.2" dev_id) in 
+        lwt _ = Lwt_unix.sleep 1.0 in
+        lwt _ = setup_flows dev local_ip rem_ip 
+                  (Uri_IP.string_to_ipv4 sp_ip) in
+          return (Uri_IP.ipv4_to_string local_ip)
       with e -> 
         eprintf "[openvpn] server error: %s\n%!" (Printexc.to_string e); 
         raise (OpenVpnError((Printexc.to_string e)))
@@ -366,10 +369,20 @@ module Manager = struct
           List.nth (Re_str.split (Re_str.regexp "\\.") subnet) 2 in 
 
         let dev_id = Tap.get_new_dev_ip () in
+        let dev = Printf.sprintf "tap%d" dev_id in
         let local_ip = Printf.sprintf "10.3.%s.2" remote_dev in
-        lwt _ = Tap.setup_dev dev_id ip in
+        lwt _ = Tap.setup_dev dev_id subnet in
         lwt _ = start_openvpn_server local_ip port node domain 
                   "client" dev_id subnet in  
+        lwt _ = setup_flows dev (Uri_IP.string_to_ipv4 subnet) 
+                  (Uri_IP.string_to_ipv4 rem_ip) sp_ip in
+        let gw_ip = Printf.sprintf "10.3.%s.1" remote_dev in 
+        lwt _ = Lwt_unix.system 
+                  (Printf.sprintf "route add -net 10.2.0.0/16 gw %s" 
+                     gw_ip) in
+        let cmd = (Printf.sprintf "route add %s gw %s"
+                     (Uri_IP.ipv4_to_string sp_ip) gw_ip) in
+        lwt _ = Lwt_unix.system cmd in
         let pid = read_pid_from_file (Config.tmp_dir ^ "/" ^ 
                                       domain ^  "/client.pid") in 
           Hashtbl.add conn_db.conns (domain) 
