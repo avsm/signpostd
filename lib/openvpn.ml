@@ -328,7 +328,7 @@ module Manager = struct
         let _ = Printf.printf "[openvpn] start serv add device %s\n%!" 
           node in
         let dev_id = Tap.get_new_dev_ip () in 
-        let ip = Printf.sprintf "10.2.%d.1" dev_id in
+        let ip = Printf.sprintf "10.3.%d.1" dev_id in
         lwt _ = Tap.setup_dev dev_id ip in
         lwt dev_id = start_openvpn_server "0.0.0.0" port 
                        node domain "server" dev_id ip in 
