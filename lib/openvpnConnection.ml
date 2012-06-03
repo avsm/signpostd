@@ -21,6 +21,9 @@ open Printf
 open Int64
 open Rpc
 
+module OP =Ofpacket
+module  OC = Controller
+
 exception Openvpn_error
 
 
@@ -41,6 +44,7 @@ let name () = "openvpn"
 
 let pairwise_connection_test a b =
   try_lwt 
+    Printf.printf "[openvpn] Trying to start ssh service...\n%!";
 (*   let (dst_ip, dst_port) = Nodes.signalling_channel a in *)
     let rpc = (Rpc.create_tactic_request "openvpn" 
       Rpc.TEST "server_start" [(string_of_int openvpn_port)]) in
@@ -78,11 +82,13 @@ let start_vpn_server node port client domain =
       (Printexc.to_string ex);
     raise Openvpn_error
 
-let start_vpn_client dst_ip host dst_port node domain = 
+let start_vpn_client dst_ip host dst_port node domain local_ip
+      remote_ip = 
   let rpc = (Rpc.create_tactic_request "openvpn" 
-  Rpc.CONNECT "client" [dst_ip; 
-                        (string_of_int openvpn_port);node;domain;
-                        (Uri_IP.ipv4_to_string 
+               Rpc.CONNECT "client" 
+               [dst_ip; (string_of_int openvpn_port);node;domain;
+                local_ip; remote_ip;
+                (Uri_IP.ipv4_to_string 
                            (Nodes.get_sp_ip node))]) in
   try
     lwt res = (Nodes.send_blocking host rpc) in 
@@ -94,15 +100,18 @@ let start_vpn_client dst_ip host dst_port node domain =
 
 let init_openvpn ip a b = 
   (* Init server on b *)
-    lwt b_ip = start_vpn_server a openvpn_port 
-                 (sprintf "%s.d%d" b Config.signpost_number) 
-                 (sprintf "%s.d%d.%s" b Config.signpost_number
-                 Config.domain) in
-  (*Init client on b and get ip *)
+  lwt b_ip = start_vpn_server a openvpn_port 
+               (sprintf "%s.d%d" b Config.signpost_number) 
+               (sprintf "%s.d%d.%s" b Config.signpost_number
+                  Config.domain) in
+   let dev_id = List.nth (Re_str.split 
+                           (Re_str.regexp "\\.") remote_ip) 2 in 
+   let local_ip = Printf.sprintf "10.3.%s.2" dev_id in 
+     (*Init client on b and get ip *)
     lwt a_ip = start_vpn_client ip b openvpn_port
                  (sprintf "%s.d%d" a Config.signpost_number) 
                  (sprintf "%s.d%d.%s" a Config.signpost_number
-                 Config.domain) in
+                 Config.domain) local_ip remote_ip in
   return (a_ip, b_ip)
 
 let start_local_server a b =
