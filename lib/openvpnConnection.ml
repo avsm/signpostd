@@ -105,29 +105,29 @@ let init_openvpn ip a b =
                (sprintf "%s.d%d.%s" b Config.signpost_number
                   Config.domain) in
    let dev_id = List.nth (Re_str.split 
-                           (Re_str.regexp "\\.") remote_ip) 2 in 
+                           (Re_str.regexp "\\.") b_ip) 2 in 
    let local_ip = Printf.sprintf "10.3.%s.2" dev_id in 
      (*Init client on b and get ip *)
     lwt a_ip = start_vpn_client ip b openvpn_port
                  (sprintf "%s.d%d" a Config.signpost_number) 
                  (sprintf "%s.d%d.%s" a Config.signpost_number
-                 Config.domain) local_ip remote_ip in
+                 Config.domain) local_ip b_ip in
   return (a_ip, b_ip)
 
 let start_local_server a b =
   (* Maybe load a copy of the Openvpn module and let it 
    * do the magic? *)
-  lwt _ = Openvpn.Manager.connect "server" 
+  lwt ip = Openvpn.Manager.connect "server" 
                    [(string_of_int openvpn_port); 
                     (sprintf "%s.d%d" a Config.signpost_number) ;
                     (sprintf "d%d.%s" Config.signpost_number
                        Config.domain);] in 
-   lwt _ = Openvpn.Manager.connect "server" 
+   lwt ip = Openvpn.Manager.connect "server" 
                    [(string_of_int openvpn_port); 
                     (sprintf "%s.d%d" b Config.signpost_number) ;
                     (sprintf "d%d.%s" Config.signpost_number
                        Config.domain);] in 
-  return ()
+  return (ip)
 
 let connect a b =
   try 
@@ -143,16 +143,21 @@ let connect a b =
         lwt (b_ip, a_ip) = init_openvpn ip b a in
             return true
       else
-        lwt _ = start_local_server a b in
+        lwt remote_ip = start_local_server a b in
+        let dev_id = 
+          List.nth (Re_str.split (Re_str.regexp "\\.") remote_ip) 2 in 
+
         let ip = Config.external_ip in
+        let local_ip = Printf.sprintf "10.3.%s.2" dev_id in
         lwt a_ip = start_vpn_client ip b openvpn_port 
                      (sprintf "d%d" Config.signpost_number) 
                      (sprintf "d%d.%s" Config.signpost_number 
-                        Config.domain) in 
+                        Config.domain) local_ip remote_ip in 
+        let local_ip = Printf.sprintf "10.3.%s.3" dev_id in
         lwt b_ip = start_vpn_client ip a openvpn_port
                      (sprintf "d%d" Config.signpost_number) 
                      (sprintf "d%d.%s" Config.signpost_number 
-                        Config.domain) in 
+                        Config.domain) local_ip remote_ip in 
           return true
   with exn ->
     Printf.eprintf "[openvpn] connect failed...\n%!";
