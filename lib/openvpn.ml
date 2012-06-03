@@ -21,12 +21,15 @@ open Lwt_unix
 open Lwt_list
 open Printf
 
+module OP = Ofpacket
+module OC = Controller
+
 module Manager = struct
   exception OpenVpnError of string
   exception MissingOpenVPNArgumentError
 
   type conn_type = {
-    ip: string option;
+    ip: string;
     port: int;
     pid: int;
     dev_id:int;
@@ -176,10 +179,82 @@ module Manager = struct
         | tries -> 
             connect_to_server domain typ (tries-1))
 
+  let setup_flows dev local_ip rem_ip sp_ip = 
 
-    let start_openvpn_server ip port node domain typ = 
-      let conn_id = conn_db.max_id + 1 in 
-      conn_db.max_id <- conn_id;
+    let controller = (List.hd Sp_controller.
+                      switch_data.Sp_controller.of_ctrl) in 
+    let dpid = 
+      (List.hd Sp_controller.switch_data.Sp_controller.dpid)  in
+
+    (* ovs-ofctl add-flow br0 arp,in_port=local,vlan_tci=0x0000,nw_dst=10.2.0.1,actions=output:26*)
+    let flow_wild = OP.Wildcards.({
+      in_port=false; dl_vlan=true; dl_src=true; dl_dst=true;
+      dl_type=false; nw_proto=true; tp_dst=true; tp_src=true;
+      nw_dst=(char_of_int 8); nw_src=(char_of_int 32);
+      dl_vlan_pcp=true; nw_tos=true;}) in
+    let flow = OP.Match.create_flow_match flow_wild 
+                 ~in_port:(OP.Port.int_of_port OP.Port.Local) 
+                 ~dl_type:(0x0806) ~nw_dst:local_ip () in
+    let Some(port) = Net_cache.Port_cache.dev_to_port_id dev in
+    let actions = [ OP.Flow.Output((OP.Port.port_of_int port), 
+                                   2000);] in
+    let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.ADD 
+                ~idle_timeout:0 ~buffer_id:(-1) actions () in 
+    let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
+    lwt _ = OC.send_of_data controller dpid bs in
+ 
+    let flow = OP.Match.create_flow_match flow_wild 
+                 ~in_port:port ~dl_type:(0x0806) ~nw_dst:local_ip () in
+    let Some(port) = Net_cache.Port_cache.dev_to_port_id dev in
+    let actions = [ OP.Flow.Output(OP.Port.Local, 2000);] in
+    let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.ADD 
+                ~idle_timeout:0 ~buffer_id:(-1) actions () in 
+    let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
+    lwt _ = OC.send_of_data controller dpid bs in
+
+    let flow_wild = OP.Wildcards.({
+      in_port=true; dl_vlan=true; dl_src=true; dl_dst=true;
+      dl_type=false; nw_proto=true; tp_dst=true; tp_src=true;
+      nw_dst=(char_of_int 0); nw_src=(char_of_int 32);
+      dl_vlan_pcp=true; nw_tos=true;}) in
+    
+    let flow = OP.Match.create_flow_match flow_wild 
+                 ~dl_type:(0x0800) ~nw_dst:sp_ip () in
+    let Some(port) = Net_cache.Port_cache.dev_to_port_id dev in
+    let actions = [ OP.Flow.Set_nw_src(local_ip);
+                    OP.Flow.Set_nw_dst(rem_ip);
+                    OP.Flow.Output((OP.Port.port_of_int port), 
+                                   2000);] in
+    let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.ADD 
+                ~idle_timeout:0 ~buffer_id:(-1) actions () in 
+    let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
+    lwt _ = OC.send_of_data controller dpid bs in
+      
+    let ip_stream = (Unix.open_process_in
+                       (Config.dir ^ 
+                        "/client_tactics/get_local_device br0")) in
+    let ips = Re_str.split (Re_str.regexp " ") (input_line ip_stream) in 
+    let _::mac::_ = ips in
+    let mac = Net_cache.Arp_cache.mac_of_string mac in 
+    let flow_wild = OP.Wildcards.({
+      in_port=false; dl_vlan=true; dl_src=true; dl_dst=true;
+      dl_type=false; nw_proto=true; tp_dst=true; tp_src=true;
+      nw_dst=(char_of_int 0); nw_src=(char_of_int 32);
+      dl_vlan_pcp=true; nw_tos=true;}) in
+    let flow = OP.Match.create_flow_match flow_wild 
+                 ~in_port:port ~dl_type:(0x0800) 
+                 ~nw_dst:local_ip () in
+    let actions = [ OP.Flow.Set_nw_dst(local_ip);
+                     OP.Flow.Set_nw_src(sp_ip); 
+                    OP.Flow.Set_dl_dst(mac);
+                    OP.Flow.Output(OP.Port.Local, 2000);] in
+    let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.ADD 
+                ~idle_timeout:0  ~buffer_id:(-1) actions () in 
+    let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
+      OC.send_of_data controller dpid bs
+
+    let start_openvpn_server ip port node domain typ conn_id 
+         local_ip = 
       (* /openvpn_tactic.sh 10000 1 d2.signpo.st debian haris 10.10.0.3 tmp/ conf/ *)
       (* Generate conf directories and keys *)
       let cmd = Config.dir ^ 
@@ -187,18 +262,18 @@ module Manager = struct
       let exec_cmd = 
         if ((Nodes.get_local_name ()) = "unknown" ) then
            Printf.sprintf "%s %s %d %s d%d %s %s %s %s %s "
-                   cmd port conn_id Config.domain
-                   Config.signpost_number node ip domain 
-                   Config.conf_dir Config.tmp_dir   
+             cmd port conn_id Config.domain
+             Config.signpost_number node ip domain 
+             Config.conf_dir Config.tmp_dir   
         else
           Printf.sprintf "%s %s %d %s %s.d%d %s %s %s %s %s "
-                   cmd port conn_id Config.domain (Nodes.get_local_name ())
-                   Config.signpost_number node ip domain Config.conf_dir 
-                   Config.tmp_dir 
+            cmd port conn_id Config.domain (Nodes.get_local_name ())
+            Config.signpost_number node ip domain Config.conf_dir 
+            Config.tmp_dir 
       in
       Printf.printf "[openvpn] executing %s\n%!" exec_cmd;
       lwt _ = Lwt_unix.system exec_cmd in 
-(*     let _ = connect_to_server domain typ 3 in  *)
+(*       let _ = connect_to_server domain typ 3 in *)
       let _ = Unix.create_process "openvpn" 
               [|""; "--config"; 
                 (Config.tmp_dir ^ "/" ^ domain ^"/" ^ typ ^ ".conf") |] 
@@ -230,50 +305,53 @@ module Manager = struct
           Printf.printf "[openvpn] process created with pid %d...\n%!" pid;
           pid
 
+    let get_domain_dev_id node domain port = 
+      if Hashtbl.mem conn_db.conns domain then  (
+        let conn = Hashtbl.find conn_db.conns domain in
+          if (List.mem (node^"."^Config.domain) conn.nodes) then (
+            (* A connection already exists *)
+            Printf.printf 
+              "[openvpn] node %s is already added\n%!" node;
+            return (conn.dev_id)
+          ) else (
+            (* Add domain to server and restart service *)
+            Printf.printf "[openvpn] adding device %s\n%!" node;
+            let _ = server_append_dev node domain "server" in
+              conn.nodes <- conn.nodes@[(node^"."^Config.domain)];
+              (* restart server *)
+              Unix.kill conn.pid Sys.sigusr1;
+              lwt _ = Lwt_unix.sleep 4.0 in      
+                return (conn.dev_id))
+      ) else (
+        (* if domain seen for the first time, setup conf dir 
+         * and start server *)
+        let _ = Printf.printf "[openvpn] start serv add device %s\n%!" 
+          node in
+        let dev_id = Tap.get_new_dev_ip () in 
+        let ip = Printf.sprintf "10.2.%d.1" dev_id in
+        lwt _ = Tap.setup_dev dev_id ip in
+        lwt dev_id = start_openvpn_server "0.0.0.0" port 
+                       node domain "server" dev_id ip in 
+        let pid = read_pid_from_file (Config.tmp_dir ^ "/" ^ 
+                                      domain ^"/server.pid") in 
+          Hashtbl.add conn_db.conns (domain) 
+            {ip=ip;port=(int_of_string port);pid;
+             dev_id;nodes=[node ^ "." ^ Config.domain]};
+          return(dev_id) ) 
+        
   let connect kind args =
     match kind with
     | "server" ->(
       try_lwt
-        let port = List.nth args 0 in
-        let node = List.nth args 1 in
-        let domain = List.nth args 2 in 
-        let sp_ip = List.nth args 3 in
-
-        lwt dev_id = 
-            if Hashtbl.mem conn_db.conns domain then  (
-                let conn = Hashtbl.find conn_db.conns domain in
-                if (List.mem (node ^ "." ^ Config.domain) conn.nodes) then ( 
-                    (* A connection already exists *)
-                    Printf.printf "[openvpn] node %s is already added\n%!" node;
-                    return (conn.dev_id)
-                ) else (
-                    (* Add a domain to the existing domain and restart service *)
-                    Printf.printf "[openvpn] server already started. adding
-                    device %s\n%!" node;
-                    let _ = server_append_dev node domain "server" in
-                    conn.nodes <- conn.nodes @ [(node ^ "." ^ Config.domain)];
-                    (* restart server *)
-                    Unix.kill conn.pid Sys.sigusr1;
-                    lwt _ = Lwt_unix.sleep 4.0 in      
-                    return (conn.dev_id)
-                )
-            ) else (
-                (* if domain seen for the first time, setup conf dir and start 
-                 * server *)
-                Printf.printf "[openvpn] starting server and adding device %s\n%!" 
-                         node;
-                lwt dev_id = start_openvpn_server "0.0.0.0" port 
-                       node domain "server" in 
-                 let pid = read_pid_from_file (Config.tmp_dir ^ "/" ^ 
-                             domain ^"/server.pid") in 
-                 Hashtbl.add conn_db.conns (domain) 
-                           {ip=None;port=(int_of_string port);pid;
-                           dev_id;nodes=[node ^ "." ^ Config.domain]};
-                           return(dev_id) ) 
-        in
+        let port::node::domain::sp_ip::_ = args in
+(*         let dev_id = Tap.get_new_dev_ip () in *)
+        lwt dev_id = get_domain_dev_id node domain port in
+        let ip = Printf.sprintf "10.2.%d.1" dev_id in
+(*
         let ip = Nodes.discover_local_ips  
           ~dev:("tap"^(string_of_int dev_id)) () in 
-        return ((List.hd ip))
+ *)
+        return (ip)
       with e -> 
         eprintf "[openvpn] server error: %s\n%!" (Printexc.to_string e); 
         raise (OpenVpnError((Printexc.to_string e)))
@@ -281,26 +359,23 @@ module Manager = struct
     | "client" -> (
       try_lwt
         let ip :: port :: node :: domain :: args = args in
-        lwt dev_id = start_openvpn_server ip port node domain 
-                       "client" in  
+        let subnet = List.nth args 0 in 
+        let rem_ip = List.nth args 1 in  
+        let sp_ip = Uri_IP.string_to_ipv4 (List.nth args 2) in 
+        let remote_dev = 
+          List.nth (Re_str.split (Re_str.regexp "\\.") subnet) 2 in 
+
+        let dev_id = Tap.get_new_dev_ip () in
+        let local_ip = Printf.sprintf "10.3.%s.2" remote_dev in
+        lwt _ = Tap.setup_dev dev_id ip in
+        lwt _ = start_openvpn_server local_ip port node domain 
+                  "client" dev_id subnet in  
         let pid = read_pid_from_file (Config.tmp_dir ^ "/" ^ 
-                    domain ^  "/client.pid") in 
-        Hashtbl.add conn_db.conns (domain) 
-                     {ip=Some(ip); port=(int_of_string port);
-                     pid;dev_id; nodes=[node^ "." ^ Config.domain];};
-        let rec get_openvpn_ip = function
-          | 0 -> raise( OpenVpnError("failed to start client"))
-          | tries -> 
-              let ip = Nodes.discover_local_ips 
-                         ~dev:("tap"^(string_of_int dev_id)) () in
-                if ((List.length ip) >= 1) then
-                  return ((List.hd ip))
-                else (
-                  lwt _ = Lwt_unix.sleep 1.0 in 
-                    get_openvpn_ip (tries - 1)
-                )
-        in
-          get_openvpn_ip 10
+                                      domain ^  "/client.pid") in 
+          Hashtbl.add conn_db.conns (domain) 
+            {ip=local_ip; port=(int_of_string port);
+             pid;dev_id; nodes=[node^ "." ^ Config.domain];};
+          return (local_ip)
       with ex ->
         raise(OpenVpnError(Printexc.to_string ex)))
     | _ -> raise(OpenVpnError(
