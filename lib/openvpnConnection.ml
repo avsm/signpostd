@@ -70,26 +70,26 @@ let pairwise_connection_test a b =
     return (false, "")
 (*    (true, "127.0.0.2") *)
 
-let start_vpn_server node port client domain =
+let start_vpn_server node port client domain dst_client =
   try_lwt
     let rpc = (Rpc.create_tactic_request "openvpn" 
-      Rpc.CONNECT "server" [(string_of_int openvpn_port); 
-                            client;domain;
-                            (Uri_IP.ipv4_to_string (Nodes.get_sp_ip client))]) in
+      Rpc.CONNECT "server" 
+                 [(string_of_int openvpn_port); client;domain;
+                  (Uri_IP.ipv4_to_string (Nodes.get_sp_ip dst_client))]) in
       Nodes.send_blocking node rpc
   with ex -> 
     Printf.printf "[openvpn ]Failed openvpn server %s:%s\n%!" node
       (Printexc.to_string ex);
     raise Openvpn_error
 
-let start_vpn_client dst_ip host dst_port node domain local_ip
+let start_vpn_client dst_ip host dst_port node domain dst_node local_ip
       remote_ip = 
   let rpc = (Rpc.create_tactic_request "openvpn" 
                Rpc.CONNECT "client" 
                [dst_ip; (string_of_int openvpn_port);node;domain;
                 local_ip; remote_ip;
                 (Uri_IP.ipv4_to_string 
-                           (Nodes.get_sp_ip node))]) in
+                           (Nodes.get_sp_ip dst_node))]) in
   try
     lwt res = (Nodes.send_blocking host rpc) in 
         return (res)
@@ -103,7 +103,7 @@ let init_openvpn ip a b =
   lwt b_ip = start_vpn_server a openvpn_port 
                (sprintf "%s.d%d" b Config.signpost_number) 
                (sprintf "%s.d%d.%s" b Config.signpost_number
-                  Config.domain) in
+                  Config.domain) b in
    let dev_id = List.nth (Re_str.split 
                            (Re_str.regexp "\\.") b_ip) 2 in 
    let local_ip = Printf.sprintf "10.3.%s.2" dev_id in 
@@ -111,7 +111,7 @@ let init_openvpn ip a b =
     lwt a_ip = start_vpn_client ip b openvpn_port
                  (sprintf "%s.d%d" a Config.signpost_number) 
                  (sprintf "%s.d%d.%s" a Config.signpost_number
-                 Config.domain) local_ip b_ip in
+                 Config.domain) a local_ip b_ip in
   return (a_ip, b_ip)
 
 let start_local_server a b =
@@ -121,12 +121,14 @@ let start_local_server a b =
                    [(string_of_int openvpn_port); 
                     (sprintf "%s.d%d" a Config.signpost_number) ;
                     (sprintf "d%d.%s" Config.signpost_number
-                       Config.domain);] in 
+                       Config.domain);
+                    (Uri_IP.ipv4_to_string (Nodes.get_sp_ip a)); ] in 
    lwt ip = Openvpn.Manager.connect "server" 
                    [(string_of_int openvpn_port); 
                     (sprintf "%s.d%d" b Config.signpost_number) ;
                     (sprintf "d%d.%s" Config.signpost_number
-                       Config.domain);] in 
+                       Config.domain);
+                    (Uri_IP.ipv4_to_string (Nodes.get_sp_ip b));] in 
   return (ip)
 
 let connect a b =
@@ -152,15 +154,16 @@ let connect a b =
         lwt a_ip = start_vpn_client ip b openvpn_port 
                      (sprintf "d%d" Config.signpost_number) 
                      (sprintf "d%d.%s" Config.signpost_number 
-                        Config.domain) local_ip remote_ip in 
+                        Config.domain) a local_ip remote_ip in 
         let local_ip = Printf.sprintf "10.3.%s.3" dev_id in
         lwt b_ip = start_vpn_client ip a openvpn_port
                      (sprintf "d%d" Config.signpost_number) 
                      (sprintf "d%d.%s" Config.signpost_number 
-                        Config.domain) local_ip remote_ip in 
+                        Config.domain) b local_ip remote_ip in 
           return true
   with exn ->
-    Printf.eprintf "[openvpn] connect failed...\n%!";
+    Printf.eprintf "[openvpn] connect failed (%s)\n%!" 
+      (Printexc.to_string exn);
     return false
 
 (**********************************************************************
