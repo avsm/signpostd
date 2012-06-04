@@ -352,6 +352,12 @@ module Manager = struct
         let rem_ip = Uri_IP.string_to_ipv4 
                        (Printf.sprintf "10.3.%d.2" dev_id) in 
         lwt _ = Lwt_unix.sleep 1.0 in
+        lwt _ = Lwt_unix.system 
+                  (Printf.sprintf "route add -net 10.2.0.0/16 gw %s" 
+                      (Uri_IP.ipv4_to_string rem_ip)) in
+        let cmd = (Printf.sprintf "route add %s gw %s" sp_ip 
+                     (Uri_IP.ipv4_to_string rem_ip)) in
+        lwt _ = Lwt_unix.system cmd in
         lwt _ = setup_flows dev local_ip rem_ip 
                   (Uri_IP.string_to_ipv4 sp_ip) in
           return (Uri_IP.ipv4_to_string local_ip)
