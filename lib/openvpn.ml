@@ -329,7 +329,7 @@ module Manager = struct
         let _ = Printf.printf "[openvpn] start serv add device %s\n%!" 
           node in
         let dev_id = Tap.get_new_dev_ip () in 
-        let ip = Printf.sprintf "10.2.%d.1" dev_id in
+        let ip = Printf.sprintf "10.3.%d.1" dev_id in
         lwt _ = Tap.setup_dev dev_id ip in
         lwt dev_id = start_openvpn_server "0.0.0.0" port 
                        node domain "server" dev_id ip in 
@@ -352,6 +352,12 @@ module Manager = struct
         let rem_ip = Uri_IP.string_to_ipv4 
                        (Printf.sprintf "10.3.%d.2" dev_id) in 
         lwt _ = Lwt_unix.sleep 1.0 in
+        lwt _ = Lwt_unix.system 
+                  (Printf.sprintf "route add -net 10.2.0.0/16 gw %s" 
+                      (Uri_IP.ipv4_to_string rem_ip)) in
+        let cmd = (Printf.sprintf "route add %s gw %s" sp_ip 
+                     (Uri_IP.ipv4_to_string rem_ip)) in
+        lwt _ = Lwt_unix.system cmd in
         lwt _ = setup_flows dev local_ip rem_ip 
                   (Uri_IP.string_to_ipv4 sp_ip) in
           return (Uri_IP.ipv4_to_string local_ip)
@@ -372,7 +378,7 @@ module Manager = struct
         let dev = Printf.sprintf "tap%d" dev_id in
         let local_ip = Printf.sprintf "10.3.%s.2" remote_dev in
         lwt _ = Tap.setup_dev dev_id subnet in
-        lwt _ = start_openvpn_server local_ip port node domain 
+        lwt _ = start_openvpn_server ip port node domain 
                   "client" dev_id subnet in  
         lwt _ = setup_flows dev (Uri_IP.string_to_ipv4 subnet) 
                   (Uri_IP.string_to_ipv4 rem_ip) sp_ip in
