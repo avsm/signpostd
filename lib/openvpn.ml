@@ -372,7 +372,7 @@ module Manager = struct
         let dev = Printf.sprintf "tap%d" dev_id in
         let local_ip = Printf.sprintf "10.3.%s.2" remote_dev in
         lwt _ = Tap.setup_dev dev_id subnet in
-        lwt _ = start_openvpn_server local_ip port node domain 
+        lwt _ = start_openvpn_server ip port node domain 
                   "client" dev_id subnet in  
         lwt _ = setup_flows dev (Uri_IP.string_to_ipv4 subnet) 
                   (Uri_IP.string_to_ipv4 rem_ip) sp_ip in
