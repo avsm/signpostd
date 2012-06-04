@@ -41,6 +41,40 @@ let name () = "openvpn"
  * How do I enforce the Node module to provide the new ip to the end node? 
  *
  *)
+let setup_cloud_flows a_dev b_dev = 
+    let controller = (List.hd Sp_controller.
+                      switch_data.Sp_controller.of_ctrl) in 
+    let dpid = 
+      (List.hd Sp_controller.switch_data.Sp_controller.dpid)  in
+    let a_dev_str = Printf.sprintf "tap%s" a_dev in
+    let b_dev_str = Printf.sprintf "tap%s" b_dev in
+    let Some(a_port) = Net_cache.Port_cache.dev_to_port_id a_dev_str in
+    let Some(b_port) = Net_cache.Port_cache.dev_to_port_id b_dev_str in
+    let a_ip =Uri_IP.string_to_ipv4 (sprintf "10.3.%s.2" a_dev) in 
+    let b_ip =Uri_IP.string_to_ipv4 (sprintf "10.3.%s.3" b_dev) in 
+    let flow_wild = OP.Wildcards.({
+      in_port=false; dl_vlan=true; dl_src=true; dl_dst=true;
+      dl_type=false; nw_proto=true; tp_dst=true; tp_src=true;
+      nw_dst=(char_of_int 0); nw_src=(char_of_int 32);
+      dl_vlan_pcp=true; nw_tos=true;}) in
+    let flow = OP.Match.create_flow_match flow_wild 
+                 ~in_port:a_port ~dl_type:(0x0800) 
+                 ~nw_dst:b_ip () in
+    let actions = [OP.Flow.Output((OP.Port.port_of_int b_port), 
+                                   2000);] in
+    let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.ADD 
+                ~idle_timeout:0 ~buffer_id:(-1) actions () in 
+    let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
+    lwt _ = OC.send_of_data controller dpid bs in
+    let flow = OP.Match.create_flow_match flow_wild 
+                 ~in_port:b_port ~dl_type:(0x0800) 
+                 ~nw_dst:a_ip () in
+    let actions = [OP.Flow.Output((OP.Port.port_of_int a_port), 
+                                   2000);] in
+    let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.ADD 
+                ~idle_timeout:0 ~buffer_id:(-1) actions () in 
+    let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
+      OC.send_of_data controller dpid bs
 
 let pairwise_connection_test a b =
   try_lwt 
@@ -151,15 +185,18 @@ let connect a b =
 
         let ip = Config.external_ip in
         let local_ip = Printf.sprintf "10.3.%s.2" dev_id in
+        let remote_ip = Printf.sprintf "10.3.%s.3" dev_id in
         lwt a_ip = start_vpn_client ip b openvpn_port 
                      (sprintf "d%d" Config.signpost_number) 
                      (sprintf "d%d.%s" Config.signpost_number 
                         Config.domain) a local_ip remote_ip in 
         let local_ip = Printf.sprintf "10.3.%s.3" dev_id in
+        let remote_ip = Printf.sprintf "10.3.%s.2" dev_id in
         lwt b_ip = start_vpn_client ip a openvpn_port
                      (sprintf "d%d" Config.signpost_number) 
                      (sprintf "d%d.%s" Config.signpost_number 
                         Config.domain) b local_ip remote_ip in 
+        lwt _ = setup_cloud_flows dev_id dev_id in
           return true
   with exn ->
     Printf.eprintf "[openvpn] connect failed (%s)\n%!" 
