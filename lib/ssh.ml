@@ -148,8 +148,8 @@ module Manager = struct
   let test kind args =
     match kind with
       (* start ssh server *)
-      | "server_start" -> run_server ()
-
+      | "server_start" -> 
+          run_server ()
       (* test tcp connectivity *)
       | "client" -> (
           try_lwt
@@ -244,7 +244,7 @@ module Manager = struct
       OC.send_of_data controller dpid bs
 
   let server_add_client domain dev_id = 
-    Printf.printf "[ssh] Adding new permitted key from domain %s\n%!" domain;
+    Printf.printf "[ssh] Adding new key from domain %s\n%!" domain;
     lwt _ = run_server () in 
     (* Dump keys in authorized_key file *)
     let update_authorized_keys () = 
@@ -254,28 +254,30 @@ module Manager = struct
         ) conn_db.conns_client; 
         close_out file
     in
-      (* if the domain is not in the cache, add it and update the authorized
-       * key file *)
+      (* if the domain is not in the cache, add it and update 
+       * the authorized key file *)
       lwt _ = 
         if(Hashtbl.mem conn_db.conns_client domain) then (
-          Printf.eprintf "[ssh] A connection the specific domain already exists\n%!";
+          Printf.eprintf "[ssh] connection already exists\n%!";
           return ()
         ) else (
-          lwt key = Key.ssh_pub_key_of_domain ~server:(Config.iodine_node_ip) 
+          lwt key = Key.ssh_pub_key_of_domain 
+                      ~server:(Config.iodine_node_ip) 
                       ~port:5354 domain in
-    match key with 
-      | Some(key) -> 
-          Hashtbl.add conn_db.conns_client domain 
-            {s_key=(List.hd key);local_dev=dev_id;};
-          return (update_authorized_keys ())
-      | None ->
-          return (Printf.printf "[ssh] Couldn't find a valid dnskey record\n%!")
+          match key with 
+            | Some(key) -> 
+                Hashtbl.add conn_db.conns_client domain 
+                  {s_key=(List.hd key);local_dev=dev_id;};
+                return (update_authorized_keys ())
+            | None ->
+                return (Printf.printf 
+                          "[ssh] Couldn't find dnskey record\n%!")
         )
-                 in
-                   return ("OK")
+      in
+        return ("OK")
 
   let client_add_server domain ip port local_dev = 
-    Printf.printf "[ssh] Adding new know_host from domain %s\n%!" domain;
+    Printf.printf "[ssh] Adding know_host domain %s\n%!" domain;
     (* Dump keys in authorized_key file *)
     let update_known_hosts () = 
       let file = open_out (Config.conf_dir ^ "/known_hosts") in 
@@ -290,7 +292,7 @@ module Manager = struct
        * key file *)    
       lwt _ = 
         if(Hashtbl.mem conn_db.conns_server domain) then (
-          Printf.eprintf "[ssh] A connection the specific domain already exists\n%!";
+          Printf.eprintf "[ssh] A connection already exists\n%!";
           return ()
         ) else (
           try_lwt 
