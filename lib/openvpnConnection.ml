@@ -82,14 +82,14 @@ let pairwise_connection_test a b =
 (*   let (dst_ip, dst_port) = Nodes.signalling_channel a in *)
     let rpc = (Rpc.create_tactic_request "openvpn" 
       Rpc.TEST "server_start" [(string_of_int openvpn_port)]) in
-    lwt res = (Nodes.send_blocking a rpc) in
+    lwt _ = (Nodes.send_blocking a rpc) in 
     Printf.printf "[openvpn] UDP server started at %s\n%!" a;
 
     let ips = Nodes.get_local_ips a in 
     let rpc = (Rpc.create_tactic_request "openvpn" 
       Rpc.TEST "client" ([(string_of_int openvpn_port)] @ ips)) in
     lwt res = (Nodes.send_blocking b rpc) in   
-    let resp_ip = rpc_of_string res in 
+(*     let resp_ip = rpc_of_string res in  *)
 
     let rpc = (Rpc.create_tactic_request "openvpn" 
       Rpc.TEST "server_stop" [(string_of_int openvpn_port)]) in
@@ -106,10 +106,10 @@ let pairwise_connection_test a b =
 
 let start_vpn_server node port client domain dst_client =
   try_lwt
-    let rpc = (Rpc.create_tactic_request "openvpn" 
-      Rpc.CONNECT "server" 
-                 [(string_of_int openvpn_port); client;domain;
-                  (Uri_IP.ipv4_to_string (Nodes.get_sp_ip dst_client))]) in
+    let rpc = 
+      (Rpc.create_tactic_request "openvpn" Rpc.CONNECT "server" 
+         [(string_of_int port); client;domain;
+          (Uri_IP.ipv4_to_string (Nodes.get_sp_ip dst_client))]) in
       Nodes.send_blocking node rpc
   with ex -> 
     Printf.printf "[openvpn ]Failed openvpn server %s:%s\n%!" node
@@ -120,7 +120,7 @@ let start_vpn_client dst_ip host dst_port node domain dst_node local_ip
       remote_ip = 
   let rpc = (Rpc.create_tactic_request "openvpn" 
                Rpc.CONNECT "client" 
-               [dst_ip; (string_of_int openvpn_port);node;domain;
+               [dst_ip; (string_of_int dst_port);node;domain;
                 local_ip; remote_ip;
                 (Uri_IP.ipv4_to_string 
                            (Nodes.get_sp_ip dst_node))]) in
@@ -151,7 +151,7 @@ let init_openvpn ip a b =
 let start_local_server a b =
   (* Maybe load a copy of the Openvpn module and let it 
    * do the magic? *)
-  lwt ip = Openvpn.Manager.connect "server" 
+  lwt _ = Openvpn.Manager.connect "server" 
                    [(string_of_int openvpn_port); 
                     (sprintf "%s.d%d" a Config.signpost_number) ;
                     (sprintf "d%d.%s" Config.signpost_number
@@ -170,13 +170,13 @@ let connect a b =
   (* Trying to see if connectivity is possible *)
     lwt (succ, ip) = pairwise_connection_test a b in
     if succ then
-      lwt (a_ip, b_ip) = init_openvpn ip a b in 
+      lwt _ = init_openvpn ip a b in 
         return true
     else
       (* try the reverse direction *)
       lwt (succ, ip) = pairwise_connection_test b a  in
       if succ then
-        lwt (b_ip, a_ip) = init_openvpn ip b a in
+        lwt _ = init_openvpn ip b a in
             return true
       else
         lwt remote_ip = start_local_server a b in
@@ -186,13 +186,13 @@ let connect a b =
         let ip = Config.external_ip in
         let local_ip = Printf.sprintf "10.3.%s.2" dev_id in
         let remote_ip = Printf.sprintf "10.3.%s.3" dev_id in
-        lwt a_ip = start_vpn_client ip b openvpn_port 
+        lwt _ = start_vpn_client ip b openvpn_port 
                      (sprintf "d%d" Config.signpost_number) 
                      (sprintf "d%d.%s" Config.signpost_number 
                         Config.domain) a local_ip remote_ip in 
         let local_ip = Printf.sprintf "10.3.%s.3" dev_id in
         let remote_ip = Printf.sprintf "10.3.%s.2" dev_id in
-        lwt b_ip = start_vpn_client ip a openvpn_port
+        lwt _ = start_vpn_client ip a openvpn_port
                      (sprintf "d%d" Config.signpost_number) 
                      (sprintf "d%d.%s" Config.signpost_number 
                         Config.domain) b local_ip remote_ip in 
@@ -222,6 +222,7 @@ let handle_request action method_name arg_list =
     with ex -> 
       return(Sp.ResponseError (Printexc.to_string ex)) 
 
-let handle_notification action method_name arg_list =
+(* let handle_notification action method_name arg_list = *)
+let handle_notification _ _ _ =
   eprintf "OpenVPN tactic doesn't handle notifications\n%!";
   return ()
