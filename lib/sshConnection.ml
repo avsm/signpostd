@@ -20,10 +20,8 @@ open Lwt_unix
 open Printf
 open Int64
 
-
 module OP =Ofpacket
 module  OC = Controller
-
 
 exception Ssh_error
 
@@ -81,14 +79,15 @@ let start_ssh_server node port client_name =
  * dst_ip:dst_port with host node and assigns an ip 
  * under the vpn_subnet subnet. 
  * *)
-let start_ssh_client host dst_ip dst_port node vpn_subnet = 
+let start_ssh_client host dst_ip dst_port node local_ip
+      remote_ip = 
   let remote_host = (node^ (sprintf ".d%d.%s" 
                              Config.signpost_number Config.domain)) in
   let rpc = (Rpc.create_tactic_request "ssh" 
                Rpc.CONNECT "client" 
                [dst_ip; (string_of_int ssh_port); remote_host; 
                 (* TODO check this param *)
-                vpn_subnet; vpn_subnet;
+                local_ip; remote_ip;
                 (Uri_IP.ipv4_to_string (Nodes.get_sp_ip node));]) in
     try
       lwt res = (Nodes.send_blocking host rpc) in 
@@ -104,11 +103,14 @@ let start_ssh_client host dst_ip dst_port node vpn_subnet =
  * *)
 let init_ssh a b ip = 
   (* Init server on b *)
-  lwt a_ip = start_ssh_server a ssh_port b in
+  lwt remote_ip = start_ssh_server a ssh_port b in
   (*Init client on b and get ip *)
+  let dev_id = List.nth (Re_str.split 
+                           (Re_str.regexp "\\.") remote_ip) 2 in 
+  let local_ip = Printf.sprintf "10.2.%s.2" dev_id in
   lwt b_ip = start_ssh_client b ip ssh_port a
-               a_ip in
-  return (a_ip, b_ip)
+               local_ip remote_ip in
+  return (remote_ip, local_ip)
 
 let setup_cloud_flows a_dev b_dev = 
     let controller = (List.hd Sp_controller.
@@ -117,6 +119,7 @@ let setup_cloud_flows a_dev b_dev =
       (List.hd Sp_controller.switch_data.Sp_controller.dpid)  in
     let a_dev_str = Printf.sprintf "tap%d" a_dev in
     let b_dev_str = Printf.sprintf "tap%d" b_dev in
+      Printf.printf "looking dev %s %s\n%!" a_dev_str b_dev_str;
     let Some(a_port) = Net_cache.Port_cache.dev_to_port_id a_dev_str in
     let Some(b_port) = Net_cache.Port_cache.dev_to_port_id b_dev_str in
     let a_ip =Uri_IP.string_to_ipv4 (sprintf "10.2.%d.2" a_dev) in 
@@ -127,7 +130,7 @@ let setup_cloud_flows a_dev b_dev =
       nw_dst=(char_of_int 0); nw_src=(char_of_int 32);
       dl_vlan_pcp=true; nw_tos=true;}) in
     let flow = OP.Match.create_flow_match flow_wild 
-                 ~in_port:a_port ~dl_type:(0x0800) 
+                ~in_port:a_port ~dl_type:(0x0800) 
                  ~nw_dst:b_ip () in
     let actions = [OP.Flow.Output((OP.Port.port_of_int b_port), 
                                    2000);] in
@@ -180,7 +183,8 @@ let start_local_server a b =
   in
   try_lwt
     let a_dev = create_devices a in
-    let b_dev = create_devices b in 
+    let b_dev = create_devices b in
+    lwt _ = Lwt_unix.sleep 1.0 in
     lwt a_dev = connect_client a b a_dev b_dev in 
     lwt b_dev = connect_client b a b_dev a_dev in
 (*
