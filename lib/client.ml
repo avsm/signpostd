@@ -40,7 +40,7 @@ let rec compareVs v1 v2 = match v1, v2 with
   | [], _ -> false
   | _, [] -> true
   | x::xs, y::ys -> 
-      Printf.printf "%s %s\n%!" x y;
+(*       Printf.printf "%s %s\n%!" x y; *)
       x = y && compareVs xs ys
 
 let nxdomain =
