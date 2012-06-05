@@ -60,7 +60,7 @@ let setup_cloud_flows a_dev b_dev =
     let flow = OP.Match.create_flow_match flow_wild 
                  ~in_port:a_port ~dl_type:(0x0800) 
                  ~nw_dst:b_ip () in
-    let actions = [OP.Flow.Output((OP.Port.port_of_int b_port), 
+    let actions = [OP.Flow.Output((OP.Port.In_port), 
                                    2000);] in
     let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.ADD 
                 ~idle_timeout:0 ~buffer_id:(-1) actions () in 
@@ -69,7 +69,7 @@ let setup_cloud_flows a_dev b_dev =
     let flow = OP.Match.create_flow_match flow_wild 
                  ~in_port:b_port ~dl_type:(0x0800) 
                  ~nw_dst:a_ip () in
-    let actions = [OP.Flow.Output((OP.Port.port_of_int a_port), 
+    let actions = [OP.Flow.Output((OP.Port.In_port), 
                                    2000);] in
     let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.ADD 
                 ~idle_timeout:0 ~buffer_id:(-1) actions () in 
