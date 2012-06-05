@@ -12,6 +12,9 @@ persist-key
 persist-tun
 pull
 
+persist-local-ip
+persist-remote-ip
+
 # ns-cert-type server
 ca $tmp_dir$/$domain$/ca.crt
 cert $tmp_dir$/$domain$/vpn.crt

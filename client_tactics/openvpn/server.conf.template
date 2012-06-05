@@ -19,8 +19,10 @@ persist-key
 # mode tap
 persist-tun
 status openvpn-status.log
-verb 6
+verb 4
 writepid $tmp_dir$/$domain$/server.pid
+persist-local-ip
+persist-remote-ip
 log $tmp_dir$/$domain$/server.log
 
 user root
