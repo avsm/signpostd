@@ -59,8 +59,7 @@ let netpanch_daemon =
       let  Unix.ADDR_INET(ip, port) = client_addr in 
       let ip = (Uri_IP.string_to_ipv4 (Unix.string_of_inet_addr ip)) in
       let rcv_buf = String.create 2048 in 
-      lwt recvlen = Lwt_unix.recv client_sock 
-        rcv_buf 0 1048 [] in
+      lwt recvlen = Lwt_unix.recv client_sock rcv_buf 0 1048 [] in
       let buf = Bitstring.bitstring_of_string 
                   (String.sub rcv_buf 0 recvlen) in 
       bitmatch buf with 
@@ -77,51 +76,64 @@ let netpanch_daemon =
             printf "[natpanch] failed to parse packet\n%!";
             return (Lwt_unix.shutdown client_sock SHUTDOWN_ALL)
     with exn -> 
-      Printf.eprintf "[natpanch] listen daemon error: %s\n%!";
+      Printf.eprintf "[natpanch]daemon error: %s\n%!" 
+        (Printexc.to_string exn);
       return ()
   done
 
+let test a b = 
+  (* Fetch public ips to store them for mapping reasons *)
+  let rpc = (Rpc.create_tactic_request "natpanch" Rpc.TEST "client_connect" 
+               [Config.external_ip; (string_of_int nat_socket);]) in
+  lwt _ = Lwt_list.map_p (fun n -> Nodes.send_blocking n rpc) [a;b;] in
+
+  (* check if two nodes can connect *)
+  let external_ip = 
+          Uri_IP.ipv4_to_string (Hashtbl.find natpanch_state.public_ip b) in
+  let rpc = (Rpc.create_tactic_request "natpanch" Rpc.TEST "client_test" 
+               [external_ip; (string_of_int nat_socket); b; 
+                (Uri_IP.ipv4_to_string (Nodes.get_sp_ip b));]) in
+  lwt res = Nodes.send_blocking a rpc in
+    return (bool_of_string res)
+
 let connect a b =
   printf "[natpunch] Setting nat punch between host %s - %s\n%!" a b;
-  (* Fetch public ips to store them for mapping reasons *)
-  let rpc = (Rpc.create_tactic_request "natpanch" 
-    Rpc.TEST "client_connect" [(string_of_int nat_socket)]) in
-  lwt res = (Nodes.send_blocking a rpc) in
-  lwt res = (Nodes.send_blocking b rpc) in
+  lwt test_res = test a b in 
+  match test_res with
+    | false -> return false
+    | true -> 
+        (* register an openflow hook for tcp connections destined to specific port *)
+        (let ips = Nodes.get_local_ips b in
+        let external_ip = 
+          Uri_IP.ipv4_to_string (Hashtbl.find natpanch_state.public_ip b) in
+        let rpc = (Rpc.create_tactic_request "natpanch" 
+                     Rpc.CONNECT "register_host" ([b;external_ip;]@ips)) in
+        lwt _ = (Nodes.send_blocking a rpc) in
+          return true)
 
-  (* register an opernflow hook for tcp connections destined to specific port *)
-  let ips = Nodes.get_local_ips b in
-  let external_ip = Uri_IP.ipv4_to_string (
-    Hashtbl.find natpanch_state.public_ip b) in
-  let rpc = (Rpc.create_tactic_request "natpanch" 
-    Rpc.CONNECT "register_host" ([b;external_ip;] @ ips)) in
-  lwt res = (Nodes.send_blocking a rpc) in
-     return ()
-
-let handle_notification action method_name arg_list =
+let handle_notification _ method_name arg_list =
   match method_name with 
-    | "server_connect" ->
-        (try_lwt
-           eprintf "[natpanch] server_connect notification received\n%!";
-            (* connection parameter *)
-            let dst = List.nth arg_list 0 in 
-            let src = List.nth arg_list 1 in 
-            let nw_src = List.nth arg_list 2 in
-            let tp_src = List.nth arg_list 3 in
-            let tp_dst = List.nth arg_list 4 in
-            let isn = List.nth arg_list 5 in
-            (* TODO: High end NAT may use src port mapping which we could detect if we
-             * tried to send a packet from the source port to the destination. *)
-            let nw_dst = Hashtbl.find natpanch_state.public_ip src in
-            let rpc = 
-              (Rpc.create_tactic_request "natpanch" 
-               Rpc.CONNECT "server_connect" 
-               [(Uri_IP.ipv4_to_string nw_dst); 
-                tp_src; tp_dst; isn;]) in
-            lwt _ = Nodes.send_blocking dst rpc in 
-              return () 
-          with exn ->
-            eprintf "[natpanch]notification error: %s\n%!" 
+    | "server_connect" -> (
+        try_lwt
+          (* connection parameter *)
+          let dst = List.nth arg_list 0 in 
+          let src = List.nth arg_list 1 in 
+          let _ = List.nth arg_list 2 in
+          let tp_src = List.nth arg_list 3 in
+          let tp_dst = List.nth arg_list 4 in
+          let isn = List.nth arg_list 5 in
+          (* TODO: High end NAT may use src port mapping which we could detect if we
+           * tried to send a packet from the source port to the destination. *)
+          let nw_dst = Hashtbl.find natpanch_state.public_ip src in
+          let rpc = 
+            (Rpc.create_tactic_request "natpanch" 
+             Rpc.CONNECT "server_connect" 
+             [(Uri_IP.ipv4_to_string nw_dst); 
+              tp_src; tp_dst; isn;]) in
+          lwt _ = Nodes.send_blocking dst rpc in 
+            return () 
+        with exn ->
+          eprintf "[natpanch]notification error: %s\n%!" 
               (Printexc.to_string exn);
             return()
         )
@@ -146,7 +158,7 @@ let handle_request action method_name arg_list =
              lwt ip = Natpunch.Manager.connect method_name arg_list in
                return(Sp.ResponseValue ip)            
            with e -> 
-             return (Sp.ResponseError "ssh_connect"))
+             return (Sp.ResponseError (sprintf "ssh_connect %s" (Printexc.to_string e))))
       | TEARDOWN ->
            eprintf "Ssh doesn't support teardown action\n%!";
              return(Sp.ResponseError "Ssh teardown is not supported yet")
