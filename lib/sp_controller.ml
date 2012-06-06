@@ -156,8 +156,8 @@ let register_handler flow cb =
 
 let unregister_handler flow_def cb = 
   let lookup_flow flow entry =
-    if ((OP.Match.flow_match_compare flow_def flow
-           flow.OP.Match.wildcards) && (entry = cb)) then 
+    if (OP.Match.flow_match_compare flow_def flow
+           flow.OP.Match.wildcards) then 
             Hashtbl.remove switch_data.cb_register flow
   in
     Hashtbl.iter lookup_flow switch_data.cb_register
