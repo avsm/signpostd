@@ -43,6 +43,9 @@ val listen : ?port:int -> unit -> unit Lwt.t
 val register_handler : Ofpacket.Match.t -> 
   (Controller.state -> Ofpacket.datapath_id -> 
      Controller.Event.e -> unit Lwt.t) -> unit
+val unregister_handler : Ofpacket.Match.t -> 
+  (Controller.state -> Ofpacket.datapath_id -> 
+     Controller.Event.e -> unit Lwt.t) -> unit
 
 val add_dev : string -> string -> string -> unit Lwt.t
 val del_dev : string -> string -> string -> unit Lwt.t

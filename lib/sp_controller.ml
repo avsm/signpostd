@@ -35,7 +35,8 @@ type mac_switch = {
 
 type pkt_in_cb_struct = {
   flow_match : OP.Match.t;
-  cb: (state -> OP.datapath_id -> (OP.Port.t * int32 * Bitstring.t * OP.datapath_id) -> unit Lwt.t);
+  cb: (state -> OP.datapath_id -> (OP.Port.t * int32 * Bitstring.t * OP.datapath_id) 
+       -> unit Lwt.t);
 }
 
 type switch_state = {
@@ -106,7 +107,7 @@ let datapath_join_cb controller dpid evt =
       | OE.Datapath_join (ports, c) -> (ports, c)
       | _ -> invalid_arg "bogus datapath_join event match!" 
   in
-    Printf.printf "received %d ports\n%!" (List.length ports);
+    Printf.printf "[openflow] received %d ports\n%!" (List.length ports);
     let action_ports = ref [] in
       (* I have the assumption that my initial setup contains only
       * local interfaces and not signpost *)
@@ -125,7 +126,6 @@ let datapath_join_cb controller dpid evt =
             [OP.Flow.Output((OP.Port.port_of_int port.OP.Port.port_id),
                             2000);])
     ) ports;
-
   lwt _ = preinstall_flows controller dpid OP.Port.Local (!action_ports) in 
   switch_data.dpid <- switch_data.dpid @ [dp];
   return (pp "+ datapath:0x%012Lx\n%!" dp)
@@ -152,11 +152,15 @@ let port_status_cb _ _ evt =
 let req_count = (ref 0)
 
 let register_handler flow cb = 
-  if (Hashtbl.mem switch_data.cb_register flow) then (
-    Hashtbl.remove switch_data.cb_register flow;
-    Hashtbl.add switch_data.cb_register flow cb
-  ) else 
-    Hashtbl.add switch_data.cb_register flow cb
+    Hashtbl.replace switch_data.cb_register flow cb
+
+let unregister_handler flow_def cb = 
+  let lookup_flow flow entry =
+    if ((OP.Match.flow_match_compare flow_def flow
+           flow.OP.Match.wildcards) && (entry = cb)) then 
+            Hashtbl.remove switch_data.cb_register flow
+  in
+    Hashtbl.iter lookup_flow switch_data.cb_register
 
 
 let add_entry_in_hashtbl mac_cache ix in_port = 
@@ -170,7 +174,6 @@ let switch_packet_in_cb controller dpid buffer_id m data in_port =
   let ix = m.OP.Match.dl_src in
   let _ = match ix with
     | "\xff\xff\xff\xff\xff\xff" -> ()
-(*     | "\xfe\xff\xff\xff\xff\xff" -> () *)
     | _ -> (
         add_entry_in_hashtbl switch_data.mac_cache ix in_port;
         Net_cache.Port_cache.add_mac ix (OP.Port.int_of_port in_port)
@@ -191,13 +194,12 @@ let switch_packet_in_cb controller dpid buffer_id m data in_port =
         || (not (Hashtbl.mem switch_data.mac_cache ix)) ) 
       then (
         let pkt = 
-              OP.Packet_out.create
-                ~buffer_id:buffer_id ~actions:[ OP.(Flow.Output(Port.All , 2000))] 
+              OP.Packet_out.create ~buffer_id:buffer_id 
+                ~actions:[ OP.(Flow.Output(Port.All , 2000))] 
                 ~data:data ~in_port:in_port () 
         in
         let bs = OP.Packet_out.packet_out_to_bitstring pkt in 
           OC.send_of_data controller dpid bs
-      (*     Printf.fprintf switch_data.log "%d %f\n" (!req_count) (((OS.Clock.time ()) -. ts)*.1000000.0) *)
       ) else (
         let out_port = (Hashtbl.find switch_data.mac_cache ix) in
         let actions = [OP.Flow.Output(out_port, 2000)] in
@@ -244,23 +246,18 @@ let packet_in_cb controller dpid evt =
 let init controller = 
   if (not (List.mem controller switch_data.of_ctrl)) then
     switch_data.of_ctrl <- (([controller] @ switch_data.of_ctrl));
-  pp "test controller register datapath cb\n";
   OC.register_cb controller OE.DATAPATH_JOIN datapath_join_cb;
-  pp "test controller register packet_in cb\n";
   OC.register_cb controller OE.PACKET_IN packet_in_cb;
-  pp "test controller register port_stat cb\n";
   OC.register_cb controller OE.PORT_STATUS_CHANGE port_status_cb
 
 let add_dev dev ip netmask =
-  lwt _ = Lwt_unix.system ("ovs-vsctl  "^
-                           " add-port br0 " ^ dev) in 
-  lwt _ = Lwt_unix.system (Printf.sprintf "ip addr add %s/%s dev br0" ip netmask) in
+  lwt _ = Lwt_unix.system ("ovs-vsctl add-port br0 " ^ dev) in 
+  lwt _ = Lwt_unix.system (sp "ip addr add %s/%s dev br0" ip netmask) in
   return ()
 
 let del_dev dev ip netmask =
-  lwt _ = Lwt_unix.system ("ovs-vsctl  "^
-                           " del-port br0 " ^ dev) in 
-  lwt _ = Lwt_unix.system (Printf.sprintf "ip addr del %s/%s dev br0" ip netmask) in
+  lwt _ = Lwt_unix.system ("ovs-vsctl del-port br0 " ^ dev) in 
+  lwt _ = Lwt_unix.system (sp "ip addr del %s/%s dev br0" ip netmask) in
   return ()
 
 let listen ?(port = 6633) () =
@@ -268,12 +265,11 @@ let listen ?(port = 6633) () =
     let sock = Lwt_unix.socket Lwt_unix.PF_INET Lwt_unix.SOCK_STREAM 0 in
     let _ = Lwt_unix.setsockopt sock Unix.SO_REUSEADDR true in 
     lwt hostinfo = Lwt_unix.gethostbyname "localhost" in
-    let _ = Printf.printf "[openflow] Starting switch...\n%!" in 
+    let _ = pp "[openflow] Starting switch...\n%!" in 
     let server_address = hostinfo.Lwt_unix.h_addr_list.(0) in
       Lwt_unix.bind sock (Lwt_unix.ADDR_INET (server_address, port)); 
       Lwt_unix.listen sock 10; 
       Lwt_unix.setsockopt sock Unix.SO_REUSEADDR true;
-      let _ = Printf.printf "[openflow] Waiting for controller...\n%!" in 
       while_lwt true do 
         lwt (fd, sockaddr) = Lwt_unix.accept sock in
           match sockaddr with
