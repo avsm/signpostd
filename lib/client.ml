@@ -143,7 +143,7 @@ let client_t () =
   xmit_t
 
 let signal_t ~port =
-  IncomingSignalling.thread ~address:"0.0.0.0" ~port
+  IncomingSignalling.thread_client ~address:"0.0.0.0" ~port
 
 let _ =
   (try node_name := Sys.argv.(1) with _ -> usage ());
