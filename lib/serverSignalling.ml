@@ -97,7 +97,8 @@ let handle_notification ip command arg_list =
         let src = List.nth arg_list 1 in 
         let dst = List.nth arg_list 2 in 
         Printf.eprintf "Execute tactic %s %s->%s\n%!" tactic src dst;
-        Engine.connect_using_tactic tactic src dst
+        lwt _ = Engine.connect_using_tactic tactic src dst in 
+          return ()
     with Failure( str) ->
       Printf.eprintf "Insufficient number of arguments to execute tactic:
         %s\n%!" str;

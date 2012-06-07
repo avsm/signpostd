@@ -35,7 +35,8 @@ module type HandlerSig = sig
 end
 
 module type Functor = sig
-  val thread : address:Sp.ip -> port:Sp.port -> unit Lwt.t
+  val thread_client : address:Sp.ip -> port:Sp.port -> unit Lwt.t
+  val thread_server : address:Sp.ip -> port:Sp.port -> unit Lwt.t
 end
 
 module Make (Handler : HandlerSig) = struct
@@ -64,45 +65,86 @@ module Make (Handler : HandlerSig) = struct
 
   let dispatch_rpc msg = 
     match msg.cmd with 
-      | Some rpc -> classify msg
+      | Some _ -> classify msg
       | None -> 
           eprintf "signal handler cannot dispatch a 'None'-RPC\n%!";
           return ()
 
   (* Listens on port Config.signal_port *)
+  let create_fd ~address ~port =
+    let fd = Lwt_unix.(socket PF_INET SOCK_STREAM 0) in
+      (* so we can restart our server quickly *)
+    return fd
+
   let bind_fd ~address ~port =
+(*
     lwt src = try_lwt
       let hent = Unix.gethostbyname address in
       return (Unix.ADDR_INET (hent.Unix.h_addr_list.(0), (to_int port)))
     with _ ->
       raise_lwt (Failure ("cannot resolve " ^ address))
     in
-    let fd = Lwt_unix.(socket PF_INET SOCK_DGRAM 0) in
+    let fd = Lwt_unix.(socket PF_INET SOCK_STREAM 0) in
+      (* so we can restart our server quickly *)
+      Lwt_unix.setsockopt fd Unix.SO_REUSEADDR true ;
+ *)
+    lwt fd = create_fd address port in 
+    lwt src = try_lwt
+      let hent = Unix.gethostbyname address in
+      return (Unix.ADDR_INET (hent.Unix.h_addr_list.(0), (to_int port)))
+    with _ ->
+      raise_lwt (Failure ("cannot resolve " ^ address))
+    in
+    Lwt_unix.setsockopt fd Unix.SO_REUSEADDR true ;
     let () = Lwt_unix.bind fd src in
-    return fd
+    let _ = Lwt_unix.listen fd 10 in 
+      return fd
+
 
   let sockaddr_to_string =
     function
     | Unix.ADDR_UNIX x -> sprintf "UNIX %s" x
     | Unix.ADDR_INET (a,p) -> sprintf "%s:%d" (Unix.string_of_inet_addr a) p
 
-  let thread ~address ~port =
+  let process_channel sock dst =
+    let data = ref "" in 
+      while_lwt true do
+        let buf = String.create 4096 in
+        lwt len = Lwt_unix.recv sock buf 0 (String.length buf) [] in
+        let subbuf = String.sub buf 0 len in
+          data := !data ^ subbuf;
+         eprintf "udp recvfrom %s : %s\n%!" (sockaddr_to_string dst) subbuf; 
+        let (rpc, len) = Rpc.rpc_of_string !data in
+          data := String.sub !data len ((String.length !data) - len);
+        let msg = 
+          match dst with 
+            |  Unix.ADDR_UNIX _ -> {src_ip=0l;src_port=0; cmd=rpc;}
+            | Unix.ADDR_INET (a,_) -> {
+                src_ip=(Uri_IP.string_to_ipv4 (Unix.string_of_inet_addr a)); 
+                src_port=0; cmd=rpc;}
+        in 
+        dispatch_rpc msg;
+        return ()
+      done
+
+  let thread_server ~address ~port =
     (* Listen for UDP packets *)
     lwt fd = bind_fd ~address ~port in
-    while_lwt true do
-      let buf = String.create 4096 in
-      lwt len, dst = Lwt_unix.recvfrom fd buf 0 (String.length buf) [] in
-      let subbuf = String.sub buf 0 len in
-       eprintf "udp recvfrom %s : %s\n%!" (sockaddr_to_string dst) subbuf; 
-      let rpc = Rpc.rpc_of_string subbuf in
-      let msg = 
-        match dst with 
-          |  Unix.ADDR_UNIX x -> {src_ip=0l;src_port=0; cmd=rpc;}
-          | Unix.ADDR_INET (a,p) -> {
-              src_ip=(Uri_IP.string_to_ipv4 (Unix.string_of_inet_addr a)); 
-              src_port=0; cmd=rpc;}
-      in 
-      dispatch_rpc msg;
-      return ()
-    done
+    while_lwt true do 
+      lwt (sock, dst) = Lwt_unix.accept fd in
+      let _ = Lwt.ignore_result (process_channel sock dst) in 
+        return ()
+    done 
+
+let thread_client ~address ~port =
+    (* Listen for UDP packets *)
+    lwt fd = create_fd ~address ~port in
+    lwt src = try_lwt
+      let hent = Unix.gethostbyname address in
+      return (Unix.ADDR_INET (hent.Unix.h_addr_list.(0), (to_int port)))
+    with _ ->
+      raise_lwt (Failure ("cannot resolve " ^ address))
+    in
+      lwt _ = Lwt_unix.connect fd src in
+        process_channel fd src
 end

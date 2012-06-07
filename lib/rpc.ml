@@ -184,8 +184,8 @@ let rpc_of_json =
 let rpc_of_string s =
   let json = try Some (Json.of_string s) with _ -> None in
   match json with
-  | None -> None
-  | Some x -> rpc_of_json x
+  | None -> (None, 0)
+  | Some (x, i)-> (rpc_of_json x, i)
 
 (**********************************************************************
  * Encode JSON-RPCs ***************************************************)

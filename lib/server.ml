@@ -138,7 +138,7 @@ i NS %s.
 module IncomingSignalling = SignalHandler.Make (ServerSignalling)
 
 let signal_t () =
-  IncomingSignalling.thread ~address:"0.0.0.0" ~port:(of_int Config.signal_port)
+  IncomingSignalling.thread_server ~address:"0.0.0.0" ~port:(of_int Config.signal_port)
 
 let _ =
   let daemon_t = join [ dns_t (); signal_t ();
