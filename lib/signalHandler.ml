@@ -28,23 +28,24 @@ type sp_msg = {
 }
 
 module type HandlerSig = sig
-  val handle_request : int32 -> Rpc.command -> 
+  val handle_request : Lwt_unix.file_descr -> int32 -> Rpc.command -> 
     Rpc.arg list -> Sp.request_response Lwt.t
-  val handle_notification : int32 -> Rpc.command -> 
+  val handle_notification : Lwt_unix.file_descr -> int32 -> Rpc.command -> 
     Rpc.arg list -> unit Lwt.t
 end
 
 module type Functor = sig
-  val thread_client : address:Sp.ip -> port:Sp.port -> unit Lwt.t
+  val thread_client : unit Lwt.u -> unit Lwt.u -> address:Sp.ip -> 
+    port:Sp.port -> unit Lwt.t
   val thread_server : address:Sp.ip -> port:Sp.port -> unit Lwt.t
 end
 
 module Make (Handler : HandlerSig) = struct
-  let classify msg =
+  let classify fd msg =
     let open Rpc in
     match msg.cmd with
     | Some (Request(c, args, id)) -> begin
-        lwt response = (Handler.handle_request msg.src_ip c args) in
+        lwt response = (Handler.handle_request fd msg.src_ip c args) in
         match response with
         | Sp.ResponseValue v -> begin
             let resp = (create_response_ok v id) in
@@ -59,13 +60,13 @@ module Make (Handler : HandlerSig) = struct
     | Some (Response(r, id)) ->
         Nodes.wake_up_thread_with_reply id (Response(r, id))
     | Some (Notification(c, args)) ->
-        Handler.handle_notification msg.src_ip c args
+        Handler.handle_notification fd msg.src_ip c args
     | _ -> Printf.eprintf "[signalHandler] failed to process req\n%!";
            return ()
 
-  let dispatch_rpc msg = 
+  let dispatch_rpc fd msg = 
     match msg.cmd with 
-      | Some _ -> classify msg
+      | Some _ -> classify fd msg
       | None -> 
           eprintf "signal handler cannot dispatch a 'None'-RPC\n%!";
           return ()
@@ -123,7 +124,7 @@ module Make (Handler : HandlerSig) = struct
                 src_ip=(Uri_IP.string_to_ipv4 (Unix.string_of_inet_addr a)); 
                 src_port=0; cmd=rpc;}
         in 
-        dispatch_rpc msg;
+        dispatch_rpc sock msg;
         return ()
       done
 
@@ -136,15 +137,21 @@ module Make (Handler : HandlerSig) = struct
         return ()
     done 
 
-let thread_client ~address ~port =
+let thread_client wakener_connect wakener_end ~address ~port =
     (* Listen for UDP packets *)
-    lwt fd = create_fd ~address ~port in
+Printf.printf "XXXXXXXXXXXXXXXX client tcp thread\n%!";
+  lwt fd = create_fd ~address ~port in
     lwt src = try_lwt
       let hent = Unix.gethostbyname address in
       return (Unix.ADDR_INET (hent.Unix.h_addr_list.(0), (to_int port)))
     with _ ->
       raise_lwt (Failure ("cannot resolve " ^ address))
     in
+    Printf.printf "XXXXXXXXXXXXX Connecting to %s:%Ld\n%!" address port;
       lwt _ = Lwt_unix.connect fd src in
-        process_channel fd src
+      let _ = Nodes.set_server_signalling_channel fd in
+      Lwt.wakeup wakener_connect ();
+         Printf.printf "XXXXXXXXXXXXXXXX client tcp success\n%!";
+      lwt _ = process_channel fd src in
+         return (Lwt.wakeup wakener_end ())
 end

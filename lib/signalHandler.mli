@@ -21,14 +21,15 @@ type sp_msg = {
 }
 
 module type HandlerSig = sig
-  val handle_request : int32 ->  Rpc.command ->
+  val handle_request : Lwt_unix.file_descr -> int32 ->  Rpc.command ->
     Rpc.arg list -> Sp.request_response Lwt.t
-  val handle_notification : int32 -> 
+  val handle_notification : Lwt_unix.file_descr -> int32 -> 
     Rpc.command -> Rpc.arg list -> unit Lwt.t
 end
 
 module type Functor = sig
-  val thread_client : address:Sp.ip -> port:Sp.port -> unit Lwt.t
+  val thread_client : unit Lwt.u -> unit Lwt.u ->
+                      address:Sp.ip -> port:Sp.port -> unit Lwt.t 
   val thread_server : address:Sp.ip -> port:Sp.port -> unit Lwt.t
 end
 

@@ -30,7 +30,7 @@ type addressable =
   | Unreachable
 
 type signalling_channel =
-  | SignallingChannel of ip * port
+  | SignallingChannel of Lwt_unix.file_descr
   | NoSignallingChannel
 
 type request_response =

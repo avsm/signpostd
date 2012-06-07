@@ -142,8 +142,9 @@ let client_t () =
   in
   xmit_t
 
-let signal_t ~port =
-  IncomingSignalling.thread_client ~address:"0.0.0.0" ~port
+let signal_t  wakener_connect wakener_end ~port =
+  IncomingSignalling.thread_client  wakener_connect wakener_end 
+    ~address:Config.external_ip ~port
 
 let _ =
   (try node_name := Sys.argv.(1) with _ -> usage ());
@@ -151,11 +152,17 @@ let _ =
   Nodes.set_local_name !node_name;
   (try node_ip := Sys.argv.(2) with _ -> usage ());
   (try node_port := (of_int (int_of_string Sys.argv.(3))) with _ -> usage ());
-  let daemon_t = join 
-  [ 
-    client_t (); 
-    signal_t ~port:!node_port;
-    dns_t ();
-    Sp_controller.listen ();
-  ] in
+  let waiter_connect, wakener_connect = Lwt.task () in
+  let waiter_end, wakener_end = Lwt.task () in
+  let _ = Lwt.ignore_result 
+            (signal_t wakener_connect wakener_end  
+               ~port:(Int64.of_int Config.signal_port)) in 
+(*   lwt _ = waiter_connect in  *)
+  let daemon_t = 
+    (waiter_connect >>= 
+       (fun _ -> join [ 
+         waiter_end; 
+         client_t (); 
+         dns_t ();
+         Sp_controller.listen ();])) in
   Lwt_main.run daemon_t

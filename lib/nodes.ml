@@ -47,6 +47,7 @@ type nodes_state = {
 }
 
 let local_name = ref "unknown"
+let server_fd = ref None
 
 (* node name -> Sp.node *)
 let node_db = {nodes=(Hashtbl.create 0);}
@@ -83,7 +84,7 @@ let get_ip name =
   let node = get name in
   match node.signalling_channel with
     | Sp.NoSignallingChannel -> raise Not_found
-    | Sp.SignallingChannel(ip, _port) -> ip
+    | Sp.SignallingChannel(fd) -> fd
 
 let get_local_ips name =
   let node = get name in
@@ -118,7 +119,14 @@ let signalling_channel name =
   let node = get name in
   match node.signalling_channel with
   | Sp.NoSignallingChannel -> raise Not_found
-  | Sp.SignallingChannel(ip, port) -> (ip, port)
+  | Sp.SignallingChannel(fd) -> fd
+
+let set_server_signalling_channel fd = 
+  server_fd := Some(fd)
+let server_signalling_channel () =
+  match (!server_fd) with 
+    | Some(fd) -> fd
+    | None -> raise Not_found
 
 let pending_responses = Hashtbl.create 1
 
@@ -138,27 +146,30 @@ let register_thread_timer id sleeper =
       return (Lwt.cancel sleeper)
   end
   | _ -> return ()
-
 let send_datagram text dst =
-  Lwt_unix.sendto send_fd text 0 (String.length text) [] dst
+   Lwt_unix.sendto send_fd text 0 (String.length text) [] dst 
 
-let send_to_addr addr rpc = 
+let send_tcp_pkt text fd =
+  Lwt_unix.send fd text 0 (String.length text) []
+
+let send_to_addr fd rpc = 
   let buf = Rpc.rpc_to_string rpc in
-  lwt len' = send_datagram buf addr in
+  lwt len' = send_tcp_pkt buf fd in
    return (eprintf "sent [%d]: %s\n%!" len' buf) 
 (*     return () *)
 
 let send name rpc =
-  let ip, port = signalling_channel name in
-  let dst = addr_from ip port in
-  send_to_addr dst rpc
+  let fd = signalling_channel name in
+(*   let dst = addr_from ip port in *)
+  send_to_addr fd rpc
 
 let send_to_server rpc =
-  let ip = Config.iodine_node_ip in
-  let port = of_int Config.signal_port in
+(*  let ip = Config.iodine_node_ip in
+  let port = of_int Config.signal_port in *)
+  let fd = server_signalling_channel () in 
 (*   eprintf "Sending to %s:%Li\n%!" ip port; *)
-  let server = addr_from ip port in
-  send_to_addr server rpc
+(*   let server = addr_from ip port in *)
+  send_to_addr fd rpc
 
 let send_blocking name rpc =
   let open Rpc in
@@ -211,9 +222,9 @@ let wake_up_thread_with_reply id data =
 (*let add_new_node name = 
   if (Hashtbl.mem )*)
 
-let set_signalling_channel name channel_ip port =
+let set_signalling_channel name fd =
   let node = get name in
-  let sch = Sp.SignallingChannel(channel_ip, port) in
+  let sch = Sp.SignallingChannel(fd) in
     update name {node with signalling_channel = sch}
 
 let set_local_ips name local_ips =
@@ -252,11 +263,13 @@ let convert_ip_string_to_int ip_string =
   in
   ipv4_addr_of_string ip_string
 
+(*
 let get_node_ip name =
   try 
     let ip_string = (get_ip name) in
     convert_ip_string_to_int ip_string
   with Not_found -> 0l
+ *)
 
 let check_for_publicly_accessible_ips name ips =
   let token = "hi_from_server" in
