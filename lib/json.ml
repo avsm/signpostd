@@ -461,7 +461,7 @@ module Parser = struct
 			incr i;
 			str.[ !i ] in
                 let ret = of_stream next in 
-                  (ret, (!i))
+                  (ret, ((!i)+1))
 end
 
 let of_string = Parser.of_string
