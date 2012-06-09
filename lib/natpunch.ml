@@ -95,7 +95,7 @@ module Manager = struct
 
 
   let handle_outgoing_syn_packet controller dpid evt =
-    pp "XXXXXXX received syn packet\n%!";
+    pp "[natpanch] received syn packet\n%!";
     try_lwt
       let (pkt, port, buffer_id) = match evt with 
         | Controller.Event.Packet_in(port, buffer_id, pkt, dpid) ->
@@ -181,7 +181,6 @@ module Manager = struct
         (List.map Uri_IP.string_to_ipv4 local_ips) in 
     let Some(src_mac) = (Net_cache.Arp_cache.get_next_hop_mac src_ip) in
     let Some(dst_mac) = (Net_cache.Arp_cache.get_next_hop_mac local_ip) in 
-      pp "XXXXXXXXXX looking for port %s\n%!" dev;  
       (*TODO port should be discovered automatically *)
       let Some(port) = Net_cache.Port_cache.dev_to_port_id 
                          Config.net_intf in 
@@ -260,7 +259,7 @@ module Manager = struct
       let client_sock = socket PF_INET SOCK_STREAM 0 in
       let hentry = Unix.inet_addr_of_string ip in
       lwt _ = 
-(*         (Lwt_unix.sleep 4.0 >|= (fun _ -> failwith("Can't connect")) ) <?> *)
+         (Lwt_unix.sleep 4.0 >|= (fun _ -> failwith("Can't connect")) ) <?> 
               Lwt_unix.connect client_sock(ADDR_INET(hentry, port)) in 
       let ADDR_INET(loc_ip,loc_port) = Lwt_unix.getsockname client_sock in
       let pkt_bitstring = BITSTRING {
@@ -294,8 +293,8 @@ module Manager = struct
           try_lwt
             let ip :: port :: _ = args in 
             let port = int_of_string port in
-            lwt _ = connect_client ip port in 
-              return ("0.0.0.0")
+            lwt ret = connect_client ip port in 
+              return (string_of_bool ret)
           with exn -> 
             printf "[natpunch] error %s\n%!" (Printexc.to_string exn);
             raise (NatpunchError(Printexc.to_string exn))) 
