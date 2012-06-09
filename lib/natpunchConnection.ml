@@ -23,6 +23,10 @@ module OP = Ofpacket
 module OC = Controller
 module OE = Controller.Event
 
+let pp = Printf.printf
+let sp = Printf.sprintf
+let ep = Printf.eprintf
+
 exception Nat_error
 
 let name () = "natpanch"
@@ -83,33 +87,55 @@ let netpanch_daemon =
 
 let test a b = 
   (* Fetch public ips to store them for mapping reasons *)
-  let rpc = (Rpc.create_tactic_request "natpanch" Rpc.TEST "client_connect" 
-               [Config.external_ip; (string_of_int nat_socket);]) in
-  lwt _ = Lwt_list.map_p (fun n -> Nodes.send_blocking n rpc) [a;b;] in
+  try_lwt 
+    let rpc = (Rpc.create_tactic_request "natpanch" Rpc.TEST 
+                 "client_connect" [Config.external_ip; 
+                                   (string_of_int nat_socket);]) in
+    lwt _ = Lwt_list.map_s (fun n -> Nodes.send_blocking n rpc) [a;b;] in
+
+    (* a command to context switch the listening thread *)
+    lwt _ = Lwt_unix.sleep 0.0 in
 
   (* check if two nodes can connect *)
-  let external_ip = 
+    let external_ip = 
           Uri_IP.ipv4_to_string (Hashtbl.find natpanch_state.public_ip b) in
-  let rpc = (Rpc.create_tactic_request "natpanch" Rpc.TEST "client_test" 
+    let rpc = (Rpc.create_tactic_request "natpanch" Rpc.TEST "client_test" 
                [external_ip; (string_of_int nat_socket); b; 
                 (Uri_IP.ipv4_to_string (Nodes.get_sp_ip b));]) in
-  lwt res = Nodes.send_blocking a rpc in
-    return (bool_of_string res)
+    lwt res = Nodes.send_blocking a rpc in
+      return (bool_of_string res)
+   with exn ->
+     ep "[natpanch]error:%s\n%!" (Printexc.to_string exn);
+     return false
 
 let connect a b =
   printf "[natpunch] Setting nat punch between host %s - %s\n%!" a b;
-  lwt test_res = test a b in 
-  match test_res with
-    | false -> return false
-    | true -> 
-        (* register an openflow hook for tcp connections destined to specific port *)
-        (let ips = Nodes.get_local_ips b in
-        let external_ip = 
-          Uri_IP.ipv4_to_string (Hashtbl.find natpanch_state.public_ip b) in
-        let rpc = (Rpc.create_tactic_request "natpanch" 
-                     Rpc.CONNECT "register_host" ([b;external_ip;]@ips)) in
-        lwt _ = (Nodes.send_blocking a rpc) in
-          return true)
+  try_lwt 
+    lwt test_res = test a b in 
+    match test_res with
+      | false -> return false
+      | true -> 
+          (* register an openflow hook for tcp connections destined 
+          * to specific port *)
+          (let ips = Nodes.get_local_ips b in
+           let external_ip = Uri_IP.ipv4_to_string 
+                               (Hashtbl.find natpanch_state.public_ip b) in
+           let rpc = 
+             Rpc.create_tactic_request "natpanch" Rpc.CONNECT "register_host"
+               [b;external_ip;
+                (Uri_IP.ipv4_to_string (Nodes.get_sp_ip b));] in
+           lwt _ = (Nodes.send_blocking a rpc) in
+(*
+           let rpc = 
+             Rpc.create_tactic_request "natpanch" Rpc.CONNECT "register_host"
+               [a;external_ip;
+                 (Uri_IP.ipv4_to_string (Nodes.get_sp_ip a))] in
+           lwt _ = (Nodes.send_blocking b rpc) in
+ *)
+             return true)
+   with exn ->
+     ep "[natpanch]error:%s\n%!" (Printexc.to_string exn);
+     return false
 
 let handle_notification _ method_name arg_list =
   match method_name with 

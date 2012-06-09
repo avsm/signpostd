@@ -21,12 +21,12 @@ open Printf
 
 let tactics = [
 (*   (module DirectConnection : Sp.TacticSig); *)
-(*   (module OpenvpnConnection : Sp.TacticSig); *)
+(*   (module OpenvpnConnection : Sp.TacticSig);  *)
 (*   (module PrivoxyConnection : Sp.TacticSig);  *)
 (*   (module TorConnection : Sp.TacticSig);  *)
- (module SshConnection : Sp.TacticSig); 
+(*  (module SshConnection : Sp.TacticSig);   *)
 (*   (module AvahiConnection : Sp.TacticSig); *)
-(*   (module NatpunchConnection : Sp.TacticSig); *)
+   (module NatpunchConnection : Sp.TacticSig); 
   ]
 
 let tactics_not_attempted_or_failed_for a b =
@@ -55,7 +55,7 @@ let iter_over_tactics wakener a b =
     in
     lwt res = Tactic.connect a b in 
 (*     lwt _ = Lwt_unix.sleep 20.0 in  *)
-    let res =true in 
+(*     let res =true in  *)
     match res with
       | false -> 
           Printf.printf "XXXXX tactic %s failed\n%!" (Tactic.name ());
@@ -82,11 +82,11 @@ let connect_using_tactic tactic a b =
     ) tactics in
     let module Tactic = (val t : Sp.TacticSig) in
     Printf.eprintf "found tactic %s\n%!" (Tactic.name ()); 
-    let dst_ip = Tactic.connect a b in 
-      return ()
-    
+    lwt ret = Tactic.connect a b in 
+      return ret
   with Not_found ->
-    return (Printf.eprintf "cannot find tactic %s\n%!" tactic)
+    Printf.eprintf "cannot find tactic %s\n%!" tactic;
+    return false
 
 let tactic_by_name name =
   try 
