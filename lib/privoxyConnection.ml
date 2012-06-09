@@ -38,11 +38,11 @@ let connect a b =
       let rpc = (Rpc.create_tactic_request "privoxy" 
                    Rpc.CONNECT "forward" []) in
       lwt res = (Nodes.send_blocking a rpc) in 
-        return ()
+        return true
     with exn -> 
       Printf.printf "[proxy] client fail %s\n%!" a;
-      raise Privoxy_error
-        return ()
+(*       raise Privoxy_error *)
+        return false
   
 
 (* ******************************************

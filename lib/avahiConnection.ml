@@ -31,11 +31,15 @@ let connect a b =
   printf "[Avahi] Setting nat punch between host %s - %s\n%!" a b;
 
   (* register an opernflow hook for tcp connections destined to specific port *)
+  try_lwt
+    let rpc = (Rpc.create_tactic_request "avahi" 
+      Rpc.CONNECT "service_discovery" []) in
+    lwt res = (Nodes.send_blocking a rpc) in
+       return true
+  with exn -> 
+    Printf.printf "[avahi] failed to enable tactic\n%!";
+    return false
 
-  let rpc = (Rpc.create_tactic_request "avahi" 
-    Rpc.CONNECT "service_discovery" []) in
-  lwt res = (Nodes.send_blocking a rpc) in
-     return ()
 
 let handle_notification action method_name arg_list =
   match method_name with

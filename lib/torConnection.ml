@@ -38,11 +38,11 @@ let connect a b =
       let rpc = (Rpc.create_tactic_request "tor" 
                    Rpc.CONNECT "forward" []) in
       lwt res = (Nodes.send_blocking a rpc) in 
-        return ()
+        return true
     with exn -> 
       Printf.printf "[socks] client fail %s\n%!" a;
-      raise Tor_error
-        return ()
+(*       raise Tor_error *)
+      return false
   
 
 (* ******************************************
