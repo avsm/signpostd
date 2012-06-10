@@ -52,11 +52,15 @@ let server_fd = ref None
 (* node name -> Sp.node *)
 let node_db = {nodes=(Hashtbl.create 0);}
 
+let calc_rand_ip subnet = 
+  let max_ip = (((Random.int subnet) + 1) lsl 2) + 1 in
+    Int32.of_int max_ip
+
 let rec find_free_ip () =  
     (* 172.31.0.0 is the network, 172.31.0.1 is the cloud,
      *  172.31.255.255 is the broadcast *)
     let node_ip = Int32.add (Uri_IP.string_to_ipv4 sp_ip_network)  
-                  (Int32.add (Random.int32 0xFFFCl)  2l) in
+                  (calc_rand_ip 0xfff) in
     let found = ref false in 
       Hashtbl.iter (fun _ a -> 
       found := ((!found) || (node_ip = a.sp_ip)) ) node_db.nodes;

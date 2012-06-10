@@ -14,6 +14,8 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
+val sp_ip_network : string
+val sp_ip_netmask : int
 
 (* API for sending rpc's to a node *)
 val send : Sp.name -> Rpc.t -> unit Lwt.t
