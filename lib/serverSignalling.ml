@@ -58,6 +58,9 @@ let handle_hello fd src_ip args =
   Nodes.set_signalling_channel node fd;
   Nodes.set_local_ips node ([(Uri_IP.ipv4_to_string src_ip)] @ local_ips);
 (*   eprintf "About to check for publicly accesible ips\n%!"; *)
+  let rpc = Rpc.create_notification "setup_sp_ip" 
+              [(Uri_IP.ipv4_to_string (Nodes.get_sp_ip node))] in 
+  lwt _ = Nodes.send node rpc in 
   Nodes.check_for_publicly_accessible_ips node local_ips >>= fun public_ips -> 
 (*     eprintf "Got public ips... store them\n%!"; *)
 (*     Connections.set_public_ips node public_ips; *)
