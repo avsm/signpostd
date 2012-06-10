@@ -62,9 +62,13 @@ let handle_notification fd ip command arg_list =
       lwt _ = Lwt_unix.system 
                 (Printf.sprintf "ip addr add %s/30 dev br0"  ip) in         
       lwt _ = Lwt_unix.system 
+                (Printf.sprintf "arp -H ether -s %s fe:ff:ff:ff:ff:ff"  
+                   gw_ip) in         
+      lwt _ = Lwt_unix.system 
                 (Printf.sprintf "route add -net %s/%d gw %s" 
                    Nodes.sp_ip_network Nodes.sp_ip_netmask gw_ip) in
-        return ()  | Command(command_name) -> 
+        return ()  
+    | Command(command_name) -> 
       eprintf "NOTIFICATION: %s with args %s\n%!" 
           command_name (String.concat ", " arg_list);
       lwt _ = execute_tactic command_name arg_list in
