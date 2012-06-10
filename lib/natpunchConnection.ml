@@ -94,7 +94,7 @@ let test a b =
     lwt _ = Lwt_list.map_s (fun n -> Nodes.send_blocking n rpc) [a;b;] in
 
     (* a command to context switch the listening thread *)
-    lwt _ = Lwt_unix.sleep 0.0 in
+    lwt _ = Lwt_unix.sleep 1.0 in
 
   (* check if two nodes can connect *)
     let external_ip = 
@@ -125,13 +125,13 @@ let connect a b =
                [b;external_ip;
                 (Uri_IP.ipv4_to_string (Nodes.get_sp_ip b));] in
            lwt _ = (Nodes.send_blocking a rpc) in
-(*
+
            let rpc = 
              Rpc.create_tactic_request "natpanch" Rpc.CONNECT "register_host"
                [a;external_ip;
                  (Uri_IP.ipv4_to_string (Nodes.get_sp_ip a))] in
            lwt _ = (Nodes.send_blocking b rpc) in
- *)
+
              return true)
    with exn ->
      ep "[natpanch]error:%s\n%!" (Printexc.to_string exn);

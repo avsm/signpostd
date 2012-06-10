@@ -36,11 +36,50 @@ let name () = "openvpn"
  * ******************************************)
 
 (*
+ * Testing methods 
+ * *)
+
+let pairwise_connection_test a b =
+  try_lwt 
+    Printf.printf "[openvpn] Trying to start ssh service...\n%!";
+(*   let (dst_ip, dst_port) = Nodes.signalling_channel a in *)
+    let rpc = (Rpc.create_tactic_request "openvpn" 
+      Rpc.TEST "server_start" [(string_of_int openvpn_port)]) in
+    lwt _ = (Nodes.send_blocking a rpc) in 
+    Printf.printf "[openvpn] UDP server started at %s\n%!" a;
+
+    let ips = Nodes.get_local_ips a in 
+    let rpc = (Rpc.create_tactic_request "openvpn" 
+      Rpc.TEST "client" ([(string_of_int openvpn_port)] @ ips)) in
+    lwt res = (Nodes.send_blocking b rpc) in   
+(*     let resp_ip = rpc_of_string res in  *)
+
+    let rpc = (Rpc.create_tactic_request "openvpn" 
+      Rpc.TEST "server_stop" [(string_of_int openvpn_port)]) in
+    lwt _ = (Nodes.send_blocking a rpc) in 
+    return (true, res)
+  with exn ->
+    let rpc = (Rpc.create_tactic_request "openvpn" 
+      Rpc.TEST "server_stop" [(string_of_int openvpn_port)]) in
+    lwt _ = (Nodes.send_blocking a rpc) in 
+    Printf.eprintf "[openvpn] Pairwise test %s->%s failed:%s\n%!" a b
+    (Printexc.to_string exn);
+    return (false, "")
+
+let test a b =
+  return 1
+
+(*
+ * Conection methods
+ * *)
+
+(*
  * TODO:
  * What garbage collection do I need to do in case something went wrong? 
  * How do I enforce the Node module to provide the new ip to the end node? 
  *
  *)
+(*    (true, "127.0.0.2") *)
 let setup_cloud_flows a_dev b_dev = 
     let controller = (List.hd Sp_controller.
                       switch_data.Sp_controller.of_ctrl) in 
@@ -75,34 +114,6 @@ let setup_cloud_flows a_dev b_dev =
                 ~idle_timeout:0 ~buffer_id:(-1) actions () in 
     let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
       OC.send_of_data controller dpid bs
-
-let pairwise_connection_test a b =
-  try_lwt 
-    Printf.printf "[openvpn] Trying to start ssh service...\n%!";
-(*   let (dst_ip, dst_port) = Nodes.signalling_channel a in *)
-    let rpc = (Rpc.create_tactic_request "openvpn" 
-      Rpc.TEST "server_start" [(string_of_int openvpn_port)]) in
-    lwt _ = (Nodes.send_blocking a rpc) in 
-    Printf.printf "[openvpn] UDP server started at %s\n%!" a;
-
-    let ips = Nodes.get_local_ips a in 
-    let rpc = (Rpc.create_tactic_request "openvpn" 
-      Rpc.TEST "client" ([(string_of_int openvpn_port)] @ ips)) in
-    lwt res = (Nodes.send_blocking b rpc) in   
-(*     let resp_ip = rpc_of_string res in  *)
-
-    let rpc = (Rpc.create_tactic_request "openvpn" 
-      Rpc.TEST "server_stop" [(string_of_int openvpn_port)]) in
-    lwt _ = (Nodes.send_blocking a rpc) in 
-    return (true, res)
-  with exn ->
-    let rpc = (Rpc.create_tactic_request "openvpn" 
-      Rpc.TEST "server_stop" [(string_of_int openvpn_port)]) in
-    lwt _ = (Nodes.send_blocking a rpc) in 
-    Printf.eprintf "[openvpn] Pairwise test %s->%s failed:%s\n%!" a b
-    (Printexc.to_string exn);
-    return (false, "")
-(*    (true, "127.0.0.2") *)
 
 let start_vpn_server node port client domain dst_client =
   try_lwt
@@ -165,7 +176,7 @@ let start_local_server a b =
                     (Uri_IP.ipv4_to_string (Nodes.get_sp_ip b));] in 
   return (ip)
 
-let connect a b =
+let connect a b meth =
   try 
   (* Trying to see if connectivity is possible *)
     lwt (succ, ip) = pairwise_connection_test a b in
@@ -202,6 +213,13 @@ let connect a b =
     Printf.eprintf "[openvpn] connect failed (%s)\n%!" 
       (Printexc.to_string exn);
     return false
+
+(*
+ * Enable tactic
+ * *)
+let enable a b =
+  return true
+
 
 (**********************************************************************
  * Handle tactic signature ********************************************)
