@@ -300,6 +300,7 @@ module Manager = struct
         lwt _ = Tap.setup_dev dev_id ip in
         lwt dev_id = start_openvpn_daemon "0.0.0.0" port 
                        node domain "server" dev_id in 
+        lwt _ = Lwt_unix.sleep 1.0 in 
         let pid = read_pid_from_file (Config.tmp_dir ^ "/" ^ 
                                       domain ^"/server.pid") in 
           Hashtbl.add conn_db.conns (domain) 
@@ -357,14 +358,20 @@ module Manager = struct
         lwt _ = Tap.setup_dev dev_id local_ip in
         lwt _ = start_openvpn_daemon ip port node domain 
                   "client" dev_id in
-        let mac_addr = "\x00\x00\x00\x00\x00\x00" in
+(*         let mac_addr = "\x00\x00\x00\x00\x00\x00" in *)
+(*
         lwt _ = setup_flows net_dev mac_addr (Uri_IP.string_to_ipv4 local_ip) 
                   (Uri_IP.string_to_ipv4 rem_ip) sp_ip in
+ *)
+(*
         let pid = read_pid_from_file (Config.tmp_dir ^ "/" ^ 
                                       domain ^  "/client.pid") in 
+ *)
+(*
           Hashtbl.add conn_db.conns (domain) 
             {ip=local_ip; port=(int_of_string port);
              pid;dev_id; nodes=[node^ "." ^ Config.domain];};
+ *)
           return (local_ip)
       with ex ->
         raise(OpenVpnError(Printexc.to_string ex)))
