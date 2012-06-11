@@ -50,5 +50,7 @@ val get_local_ips : Sp.name -> Sp.ip list
 val get_local_name : unit -> string
 val set_local_name : string -> unit
 val get_sp_ip : string -> int32
+val get_node_mac : string -> string
+val set_node_mac : string -> string -> unit
 val get_nodes : unit -> string list
 val convert_ip_string_to_int : Sp.ip -> int32

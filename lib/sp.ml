@@ -42,9 +42,10 @@ module type TacticSig = sig
   val name : unit -> Rpc.tactic_name
   (* val provides : unit -> channel_property list *)
 (*   val  : name -> name -> bool Lwt.t *)
-  val test : name -> name -> int Lwt.t
-  val connect : name -> name -> int -> bool Lwt.t
-  val enable : name -> name -> bool Lwt.t
+  val test : name -> name -> (int * string) Lwt.t
+  val connect : name -> name -> (int * string) -> 
+    (bool * int * int) Lwt.t
+  val enable : name -> name -> (int * int) -> bool Lwt.t
   val handle_request : Rpc.action -> Rpc.method_name -> Rpc.arg list ->
     request_response Lwt.t
   val handle_notification : Rpc.action -> Rpc.method_name -> Rpc.arg list ->

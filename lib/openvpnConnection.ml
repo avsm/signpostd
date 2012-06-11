@@ -46,7 +46,6 @@ let pairwise_connection_test a b =
     let rpc = (Rpc.create_tactic_request "openvpn" 
       Rpc.TEST "server_start" [(string_of_int openvpn_port)]) in
     lwt _ = (Nodes.send_blocking a rpc) in 
-    Printf.printf "[openvpn] UDP server started at %s\n%!" a;
 
     let ips = Nodes.get_local_ips a in 
     let rpc = (Rpc.create_tactic_request "openvpn" 
@@ -67,7 +66,16 @@ let pairwise_connection_test a b =
     return (false, "")
 
 let test a b =
-  return 1
+   (* Trying to see if connectivity is possible *)
+    lwt (succ, ip) = pairwise_connection_test a b in
+    if succ then return (1, ip)
+    else
+      (* try the reverse direction *)
+      lwt (succ, ip) = pairwise_connection_test b a  in
+      if succ then return (2, ip)
+      else
+        (* go through cloud then *)
+        return (3, Config.external_ip)
 
 (*
  * Conection methods
@@ -79,7 +87,6 @@ let test a b =
  * How do I enforce the Node module to provide the new ip to the end node? 
  *
  *)
-(*    (true, "127.0.0.2") *)
 let setup_cloud_flows a_dev b_dev = 
     let controller = (List.hd Sp_controller.
                       switch_data.Sp_controller.of_ctrl) in 
@@ -149,48 +156,80 @@ let init_openvpn ip a b =
                (sprintf "%s.d%d" b Config.signpost_number) 
                (sprintf "%s.d%d.%s" b Config.signpost_number
                   Config.domain) b in
-   let dev_id = List.nth (Re_str.split 
+  let dev_id = List.nth (Re_str.split 
                            (Re_str.regexp "\\.") b_ip) 2 in 
-   let local_ip = Printf.sprintf "10.3.%s.2" dev_id in 
+  let local_ip = Printf.sprintf "10.3.%s.2" dev_id in 
      (*Init client on b and get ip *)
-    lwt a_ip = start_vpn_client ip b openvpn_port
-                 (sprintf "%s.d%d" a Config.signpost_number) 
-                 (sprintf "%s.d%d.%s" a Config.signpost_number
-                 Config.domain) a local_ip b_ip in
-  return (a_ip, b_ip)
+  lwt a_ip = start_vpn_client ip b openvpn_port
+               (sprintf "%s.d%d" a Config.signpost_number) 
+               (sprintf "%s.d%d.%s" a Config.signpost_number
+                  Config.domain) a local_ip b_ip in
+    return (dev_id)
+
+let enable_vpn_client host dev_id dst_node local_ip remote_ip = 
+  let rpc = (Rpc.create_tactic_request "openvpn" 
+               Rpc.CONNECT "client_enable" 
+               [(string_of_int dev_id); local_ip; remote_ip;
+                (Nodes.get_node_mac dst_node);
+                (Uri_IP.ipv4_to_string 
+                   (Nodes.get_sp_ip host));
+                (Uri_IP.ipv4_to_string 
+                   (Nodes.get_sp_ip dst_node))]) in
+  try
+    lwt res = (Nodes.send_blocking host rpc) in 
+        return (res)
+  with ex -> 
+    Printf.printf "[openvpn]Failed openvpn client %s: %s\n%!" 
+      host (Printexc.to_string ex);
+    raise Openvpn_error
+
+let enable_openvpn dev_id a b = 
+  (* Init server on b *)
+  try_lwt
+    let rpc = 
+      (Rpc.create_tactic_request "openvpn" Rpc.CONNECT "server_enable" 
+         [(string_of_int dev_id); (Nodes.get_node_mac b); 
+          (Uri_IP.ipv4_to_string (Nodes.get_sp_ip a));
+          (Uri_IP.ipv4_to_string (Nodes.get_sp_ip b))]) in
+    lwt _ = Nodes.send_blocking a rpc in
+
+    let remote_ip = Printf.sprintf "10.3.%d.1" dev_id in 
+    let local_ip = Printf.sprintf "10.3.%d.2" dev_id in 
+      (*Init client on b and get ip *)
+    lwt a_ip = enable_vpn_client b dev_id a local_ip remote_ip in
+      return (dev_id)
+  with ex -> 
+    Printf.printf "[openvpn ]Failed openvpn enabling %s->%s:%s\n%!" a b
+      (Printexc.to_string ex);
+    raise Openvpn_error
 
 let start_local_server a b =
   (* Maybe load a copy of the Openvpn module and let it 
    * do the magic? *)
   lwt _ = Openvpn.Manager.connect "server" 
-                   [(string_of_int openvpn_port); 
-                    (sprintf "%s.d%d" a Config.signpost_number) ;
-                    (sprintf "d%d.%s" Config.signpost_number
-                       Config.domain);
-                    (Uri_IP.ipv4_to_string (Nodes.get_sp_ip a)); ] in 
-   lwt ip = Openvpn.Manager.connect "server" 
-                   [(string_of_int openvpn_port); 
-                    (sprintf "%s.d%d" b Config.signpost_number) ;
-                    (sprintf "d%d.%s" Config.signpost_number
-                       Config.domain);
-                    (Uri_IP.ipv4_to_string (Nodes.get_sp_ip b));] in 
-  return (ip)
+            [(string_of_int openvpn_port); 
+             (sprintf "%s.d%d" a Config.signpost_number) ;
+             (sprintf "d%d.%s" Config.signpost_number
+                Config.domain);
+             (Uri_IP.ipv4_to_string (Nodes.get_sp_ip a)); ] in 
+  lwt ip = Openvpn.Manager.connect "server" 
+             [(string_of_int openvpn_port); 
+              (sprintf "%s.d%d" b Config.signpost_number) ;
+              (sprintf "d%d.%s" Config.signpost_number
+                 Config.domain);
+              (Uri_IP.ipv4_to_string (Nodes.get_sp_ip b));] in 
+    return (ip)
 
 let connect a b meth =
-  try 
+  try_lwt
   (* Trying to see if connectivity is possible *)
-    lwt (succ, ip) = pairwise_connection_test a b in
-    if succ then
-      lwt _ = init_openvpn ip a b in 
-        return true
-    else
-      (* try the reverse direction *)
-      lwt (succ, ip) = pairwise_connection_test b a  in
-      if succ then
-        lwt _ = init_openvpn ip b a in
-            return true
-      else
-        lwt remote_ip = start_local_server a b in
+    match meth with
+      | (1, ip) -> lwt dev_id = init_openvpn ip a b in 
+               return (true, 1, (int_of_string dev_id))
+      | (2, ip) -> lwt dev_id = init_openvpn ip b a in
+            return (true, 2, (int_of_string dev_id))
+      | (3, ip) ->
+        (lwt remote_ip = start_local_server a b in
         let dev_id = 
           List.nth (Re_str.split (Re_str.regexp "\\.") remote_ip) 2 in 
 
@@ -207,18 +246,33 @@ let connect a b meth =
                      (sprintf "d%d" Config.signpost_number) 
                      (sprintf "d%d.%s" Config.signpost_number 
                         Config.domain) b local_ip remote_ip in 
-        lwt _ = setup_cloud_flows dev_id dev_id in
-          return true
+(*         lwt _ = setup_cloud_flows dev_id dev_id in *)
+          return (true, 3, (int_of_string dev_id))
+        )
+      | _ -> return (false, 0, -1)
   with exn ->
     Printf.eprintf "[openvpn] connect failed (%s)\n%!" 
       (Printexc.to_string exn);
-    return false
+    return (false, 0, -1)
 
 (*
  * Enable tactic
  * *)
-let enable a b =
-  return true
+let enable a b state =
+  match state with 
+    | (1, dev_id) -> lwt _ = enable_openvpn dev_id a b in
+                       return true
+    | (2, dev_id) -> lwt _ = enable_openvpn dev_id b a in
+                       return true
+    | (3, dev_id) -> 
+        let local_ip = Printf.sprintf "10.3.%d.2" dev_id in
+        let remote_ip = Printf.sprintf "10.3.%d.3" dev_id in
+        lwt _ = enable_vpn_client b dev_id a local_ip remote_ip in 
+        let local_ip = Printf.sprintf "10.3.%d.3" dev_id in
+        let remote_ip = Printf.sprintf "10.3.%d.2" dev_id in
+        lwt _ = enable_vpn_client a dev_id b local_ip remote_ip in 
+          return true
+    | (_, _) -> return false 
 
 
 (**********************************************************************

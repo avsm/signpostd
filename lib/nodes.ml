@@ -37,6 +37,7 @@ let sp_ip_netmask = 16
 type node = {
   signalling_channel: Sp.signalling_channel;
   name: Sp.name;
+  mutable mac: string;
   local_ips: Sp.ip list;
   public_ips : Sp.ip list;
   sp_ip : int32;
@@ -72,7 +73,8 @@ let new_node_with_name name ?(ips=[]) ?(public_ips=[]) () = {
   name = name;
   signalling_channel = Sp.NoSignallingChannel;
   local_ips = ips;
-  public_ips = []; 
+  public_ips = [];
+  mac = "\xfe\xff\xff\xff\xff\xff";
   sp_ip = (find_free_ip ());
 }
 
@@ -97,6 +99,14 @@ let get_local_ips name =
 let get_sp_ip name = 
   let node = get name in
     node.sp_ip
+
+let get_node_mac name = 
+  let node = get name in
+    node.mac
+let set_node_mac name mac = 
+  let node = get name in
+    node.mac <- mac
+
 
 let get_local_name () = 
   (!local_name)
