@@ -163,7 +163,7 @@ module Manager = struct
       OC.send_of_data controller dpid bs
 
 
-  let setup_flows dev local_ip rem_ip sp_ip = 
+  let setup_flows dev mac_addr local_ip rem_ip sp_ip = 
     let controller = (List.hd Sp_controller.
                       switch_data.Sp_controller.of_ctrl) in 
     let dpid = 
@@ -187,6 +187,8 @@ module Manager = struct
     let Some(port) = Net_cache.Port_cache.dev_to_port_id dev in
     let actions = [ OP.Flow.Set_nw_src(local_ip);
                     OP.Flow.Set_nw_dst(rem_ip);
+                    OP.Flow.Set_dl_dst(
+                      (Net_cache.Arp_cache.mac_of_string mac_addr));
                     OP.Flow.Output((OP.Port.port_of_int port), 
                                    2000);] in
     let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.ADD 
@@ -331,13 +333,13 @@ module Manager = struct
     )
     | "server_enable" ->(
       try_lwt
-        let dev_id::sp_ip::_ = args in
+        let dev_id::mac_addr::sp_ip::_ = args in
         let dev = Printf.sprintf "tap%s" dev_id in
         let local_ip = Uri_IP.string_to_ipv4 
                          (Printf.sprintf "10.3.%s.1" dev_id) in  
         let rem_ip = Uri_IP.string_to_ipv4 
                        (Printf.sprintf "10.3.%s.2" dev_id) in 
-        lwt _ = setup_flows dev local_ip rem_ip 
+        lwt _ = setup_flows dev mac_addr local_ip rem_ip 
                   (Uri_IP.string_to_ipv4 sp_ip) in
           return (Uri_IP.ipv4_to_string local_ip)
       with e -> 
@@ -351,18 +353,13 @@ module Manager = struct
         let sp_ip = Uri_IP.string_to_ipv4 sp_ip in 
         let dev_id = Tap.get_new_dev_ip () in
         let net_dev = Printf.sprintf "tap%d" dev_id in
-        Printf.printf "settind dev %s ip %s\n%!" net_dev local_ip;
+        Printf.printf "setting dev %s ip %s\n%!" net_dev local_ip;
         lwt _ = Tap.setup_dev dev_id local_ip in
         lwt _ = start_openvpn_daemon ip port node domain 
-                  "client" dev_id in  
-        lwt _ = setup_flows net_dev (Uri_IP.string_to_ipv4 local_ip) 
+                  "client" dev_id in
+        let mac_addr = "\x00\x00\x00\x00\x00\x00" in
+        lwt _ = setup_flows net_dev mac_addr (Uri_IP.string_to_ipv4 local_ip) 
                   (Uri_IP.string_to_ipv4 rem_ip) sp_ip in
-(*
-        lwt _ = Lwt_unix.system (Printf.sprintf "route add %s gw %s"
-                     (Uri_IP.ipv4_to_string sp_ip) rem_ip) in
-          Printf.printf "route add %s gw %s"
-            (Uri_IP.ipv4_to_string sp_ip) rem_ip; 
- *)
         let pid = read_pid_from_file (Config.tmp_dir ^ "/" ^ 
                                       domain ^  "/client.pid") in 
           Hashtbl.add conn_db.conns (domain) 
@@ -371,6 +368,18 @@ module Manager = struct
           return (local_ip)
       with ex ->
         raise(OpenVpnError(Printexc.to_string ex)))
+    | "client_enable" -> (
+      try_lwt
+        let dev_id::local_ip::rem_ip::mac_addr::sp_ip::_ = args in
+        let sp_ip = Uri_IP.string_to_ipv4 sp_ip in 
+        let net_dev = Printf.sprintf "tap%s" dev_id in
+        Printf.printf "setting dev %s ip %s\n%!" net_dev local_ip;
+        lwt _ = setup_flows net_dev mac_addr 
+                  (Uri_IP.string_to_ipv4 local_ip) 
+                  (Uri_IP.string_to_ipv4 rem_ip) sp_ip in
+          return (local_ip)
+      with ex ->
+        raise(OpenVpnError(Printexc.to_string ex)))    
     | _ -> raise(OpenVpnError(
         (Printf.sprintf "[openvpn] invalid invalid action %s" kind)))
 
