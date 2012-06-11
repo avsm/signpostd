@@ -53,9 +53,8 @@ let iter_over_tactics wakener a b =
         Connections.IN_PROGRESS None 
       | _ -> () 
     in
-    lwt meth = Tactic.test a b in 
-    lwt res = Tactic.connect a b meth in
-    
+    lwt (dir, ip) = Tactic.test a b in 
+    lwt (res, dir, conn_id) = Tactic.connect a b (dir, ip) in 
 (*     lwt _ = Lwt_unix.sleep 20.0 in  *)
 (*     let res =true in  *)
     match res with
@@ -66,7 +65,7 @@ let iter_over_tactics wakener a b =
           Connections.store_tactic_state a b 
             (Tactic.name ()) Connections.SUCCESS_ACTIVE 
             None;
-          lwt _ = Tactic.enable a b in
+          lwt _ = Tactic.enable a b (dir, conn_id) in
           return(Lwt.wakeup wakener true)
   ) (tactics_not_attempted_or_failed_for a b) in
   match (Connections.get_link_status a b) with
@@ -92,8 +91,14 @@ let connect_using_tactic tactic a b =
     ) tactics in
     let module Tactic = (val t : Sp.TacticSig) in
     Printf.eprintf "found tactic %s\n%!" (Tactic.name ()); 
-    lwt meth = Tactic.test a b in 
-    lwt ret = Tactic.connect a b meth in 
+    lwt (dir, ip) = Tactic.test a b in 
+    lwt (ret, dir, conn) = Tactic.connect a b (dir,ip) in
+    lwt _ = 
+      if (ret) then 
+        Tactic.enable a b (dir, conn) 
+      else
+        return (false)
+    in
       return ret
   with Not_found ->
     Printf.eprintf "cannot find tactic %s\n%!" tactic;
