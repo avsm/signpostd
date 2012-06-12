@@ -24,16 +24,18 @@ ovs-vsctl show | grep Interface | grep tap | awk '{print $2;}' \
 ovs-dpctl show br0 | grep tap | awk '{print $3}' \
     | xargs -I '{}' ovs-vsctl del-port br0  '{}'
 
-
 # clean up ip addresses from bridge interface
-ip addr show  dev br0 | grep 10\\.2\\. | awk '{print $2;}' |  xargs -I '{}'  ip addr del  '{}' dev br0
+ip addr show  dev br0 | grep 10\\.\[23\]\\. | awk '{print $2;}' |\
+  xargs -I '{}'  ip addr del  '{}' dev br0
 
 # cleaning default links for sp addresses
-route -n | grep 172\.31\.  | xargs -I '{}' route del '{}'
+route -n | grep 172\\.31\\.  | awk '{print $1" gw "$2;}' \
+  | xargs -I '{}' echo route del '{}' > /tmp/sp_route_cleanup.sh
 
 # cleanning up ssh routes
-route -n | grep 10\.2\. | awk '{print $1" netmask "$3" gw "$2;}' \
-    | xargs -I '{}' route del -net '{}'
+route -n | grep 10\\.\[23\]\\. | awk '{print $1" netmask "$3" gw "$2;}' \
+    | xargs -I '{}' echo route del -net '{}' >> /tmp/sp_route_cleanup.sh
+sh /tmp/sp_route_cleanup.sh
 
 
 ../_build/lib/server.native
