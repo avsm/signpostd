@@ -79,7 +79,7 @@ module Manager = struct
       (*service PTR mapping*)
     let serv_type = Re_str.split (Re_str.regexp "\.") name in 
     let serv_name =  [(node_name);
-                      ("t"^(string_of_int Config.signpost_number));
+                      ("d"^(string_of_int Config.signpost_number));
                       "signpo";"st"] in 
 
     let serv_ptr = DP.({rr_name=(List.tl serv_type); rr_class=DP.(`IN);
