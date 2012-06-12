@@ -78,17 +78,6 @@ module Make (Handler : HandlerSig) = struct
     return fd
 
   let bind_fd ~address ~port =
-(*
-    lwt src = try_lwt
-      let hent = Unix.gethostbyname address in
-      return (Unix.ADDR_INET (hent.Unix.h_addr_list.(0), (to_int port)))
-    with _ ->
-      raise_lwt (Failure ("cannot resolve " ^ address))
-    in
-    let fd = Lwt_unix.(socket PF_INET SOCK_STREAM 0) in
-      (* so we can restart our server quickly *)
-      Lwt_unix.setsockopt fd Unix.SO_REUSEADDR true ;
- *)
     lwt fd = create_fd address port in 
     lwt src = try_lwt
       let hent = Unix.gethostbyname address in
@@ -105,27 +94,32 @@ module Make (Handler : HandlerSig) = struct
   let sockaddr_to_string =
     function
     | Unix.ADDR_UNIX x -> sprintf "UNIX %s" x
-    | Unix.ADDR_INET (a,p) -> sprintf "%s:%d" (Unix.string_of_inet_addr a) p
+    | Unix.ADDR_INET (a,p) -> sprintf "%s:%d" 
+                                (Unix.string_of_inet_addr a) p
 
   let process_channel sock dst =
     let data = ref "" in 
       while_lwt true do
         let buf = String.create 4096 in
         lwt len = Lwt_unix.recv sock buf 0 (String.length buf) [] in
-        let subbuf = String.sub buf 0 len in
-          data := !data ^ subbuf;
-         eprintf "udp recvfrom %s : %s\n%!" (sockaddr_to_string dst) subbuf; 
-        let (rpc, len) = Rpc.rpc_of_string !data in
-          data := String.sub !data len ((String.length !data) - len);
-        let msg = 
-          match dst with 
-            |  Unix.ADDR_UNIX _ -> {src_ip=0l;src_port=0; cmd=rpc;}
-            | Unix.ADDR_INET (a,_) -> {
-                src_ip=(Uri_IP.string_to_ipv4 (Unix.string_of_inet_addr a)); 
-                src_port=0; cmd=rpc;}
-        in 
-        dispatch_rpc sock msg;
-        return ()
+        if (len <> 0) then 
+          (let subbuf = String.sub buf 0 len in
+            data := !data ^ subbuf;
+           eprintf "tcp recvfrom %s : %s\n%!" 
+             (sockaddr_to_string dst) subbuf; 
+          let (Some(rpc), len) = Rpc.rpc_of_string !data in
+            data := String.sub !data len ((String.length !data) - len);
+          let msg = 
+            match dst with 
+              |  Unix.ADDR_UNIX _ -> {src_ip=0l;src_port=0; cmd=Some(rpc);}
+              | Unix.ADDR_INET (a,_) -> {
+                  src_ip=(Uri_IP.string_to_ipv4(Unix.string_of_inet_addr a)); 
+                  src_port=0; cmd=Some(rpc);}
+          in 
+          dispatch_rpc sock msg;
+          return ())
+        else
+          return (Printf.eprintf "[signal] Read no data\n%!")
       done
 
   let thread_server ~address ~port =
@@ -139,7 +133,6 @@ module Make (Handler : HandlerSig) = struct
 
 let thread_client wakener_connect wakener_end ~address ~port =
     (* Listen for UDP packets *)
-Printf.printf "XXXXXXXXXXXXXXXX client tcp thread\n%!";
   lwt fd = create_fd ~address ~port in
     lwt src = try_lwt
       let hent = Unix.gethostbyname address in
@@ -147,11 +140,9 @@ Printf.printf "XXXXXXXXXXXXXXXX client tcp thread\n%!";
     with _ ->
       raise_lwt (Failure ("cannot resolve " ^ address))
     in
-    Printf.printf "XXXXXXXXXXXXX Connecting to %s:%Ld\n%!" address port;
       lwt _ = Lwt_unix.connect fd src in
       let _ = Nodes.set_server_signalling_channel fd in
       Lwt.wakeup wakener_connect ();
-         Printf.printf "XXXXXXXXXXXXXXXX client tcp success\n%!";
       lwt _ = process_channel fd src in
          return (Lwt.wakeup wakener_end ())
 end
