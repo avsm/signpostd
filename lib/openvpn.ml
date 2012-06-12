@@ -84,6 +84,7 @@ module Manager = struct
     let buf = String.create 1500 in
     let sock = Lwt_unix.socket Lwt_unix.PF_INET Lwt_unix.SOCK_DGRAM
               (Unix.getprotobyname "udp").Unix.p_proto in   
+(*
     let _ = try
       (* Make this a bit more random*)
         (Lwt_unix.bind sock (Lwt_unix.ADDR_INET (Unix.inet_addr_any,
@@ -92,6 +93,7 @@ module Manager = struct
                   (Printexc.to_string exn);
                 raise (OpenVpnError("Couldn't be a udp server"))
     in
+ *)
     let send_pkt_to port ip =
       let ipaddr = (Unix.gethostbyname ip).Unix.h_addr_list.(0) in
       let portaddr = Unix.ADDR_INET (ipaddr, port) in
