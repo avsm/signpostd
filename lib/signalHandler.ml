@@ -99,28 +99,40 @@ module Make (Handler : HandlerSig) = struct
 
   let process_channel sock dst =
     let data = ref "" in 
-      while_lwt true do
-        let buf = String.create 4096 in
-        lwt len = Lwt_unix.recv sock buf 0 (String.length buf) [] in
-        if (len <> 0) then 
-          (let subbuf = String.sub buf 0 len in
-            data := !data ^ subbuf;
-           eprintf "tcp recvfrom %s : %s\n%!" 
-             (sockaddr_to_string dst) subbuf; 
-          let (Some(rpc), len) = Rpc.rpc_of_string !data in
-            data := String.sub !data len ((String.length !data) - len);
-          let msg = 
-            match dst with 
-              |  Unix.ADDR_UNIX _ -> {src_ip=0l;src_port=0; cmd=Some(rpc);}
-              | Unix.ADDR_INET (a,_) -> {
-                  src_ip=(Uri_IP.string_to_ipv4(Unix.string_of_inet_addr a)); 
-                  src_port=0; cmd=Some(rpc);}
-          in 
-          dispatch_rpc sock msg;
-          return ())
-        else
-          return (Printf.eprintf "[signal] Read no data\n%!")
-      done
+    let running = ref true in 
+      try_lwt
+        while_lwt !running do
+          let buf = String.create 4096 in
+          lwt len = Lwt_unix.recv sock buf 0 (String.length buf) [] in
+          if (len <> 0) then 
+            (let subbuf = String.sub buf 0 len in
+              data := !data ^ subbuf;
+             eprintf "tcp recvfrom %s : %s\n%!" 
+               (sockaddr_to_string dst) subbuf; 
+            let (Some(rpc), len) = Rpc.rpc_of_string !data in
+              data := String.sub !data len ((String.length !data) - len);
+            let msg = 
+              match dst with 
+                |  Unix.ADDR_UNIX _ ->{src_ip=0l;src_port=0; cmd=Some(rpc);}
+                | Unix.ADDR_INET (a,_) -> {
+                    src_ip=(Uri_IP.string_to_ipv4(Unix.string_of_inet_addr a)); 
+                    src_port=0; cmd=Some(rpc);}
+            in 
+            dispatch_rpc sock msg;
+            return ()
+          ) else (
+            (* TODO: Propagate an event to engine to serverSignal to clean up 
+            * state for node *)
+            Printf.printf "[signal] session terminated with end-node %s\n%!"
+              (sockaddr_to_string dst);
+            running := false;
+            return () )
+        done
+    with exn ->
+      Printf.printf "[signal] session terminated with end-node %s\n%!"
+        (sockaddr_to_string dst);
+      running := false;
+      return ()
 
   let thread_server ~address ~port =
     (* Listen for UDP packets *)
