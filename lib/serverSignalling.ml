@@ -52,11 +52,12 @@ let handle_config_discovery = function
     return ()
 
 let handle_hello fd src_ip args =
-  let node :: ip :: str_port :: local_ips = args in
+  let node :: ip :: str_port :: mac :: local_ips = args in
   let port = Int64.of_int (int_of_string str_port) in
   eprintf "rpc: hello %s -> %s:%Li\n%!" node ip port;
   Nodes.set_signalling_channel node fd;
   Nodes.set_local_ips node ([(Uri_IP.ipv4_to_string src_ip)] @ local_ips);
+  Nodes.set_node_mac node mac;
 (*   eprintf "About to check for publicly accesible ips\n%!"; *)
   let rpc = Rpc.create_notification "setup_sp_ip" 
               [(Uri_IP.ipv4_to_string (Nodes.get_sp_ip node))] in 
