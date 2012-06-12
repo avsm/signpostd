@@ -120,11 +120,11 @@ let get_hello_rpc ips =
   let ip_stream = (Unix.open_process_in
                      (Config.dir ^ 
                       "/client_tactics/get_local_device br0")) in
-  let ips = Re_str.split (Re_str.regexp " ") 
+  let test = Re_str.split (Re_str.regexp " ") 
               (input_line ip_stream) in 
-  let _::mac::_ = ips in
-  let mac = Net_cache.Arp_cache.mac_of_string mac in 
-  let args = [!node_name; !node_ip; string_port; mac] @ ips in
+  let _::mac::_ = test in
+(*   let mac = Net_cache.Arp_cache.mac_of_string mac in  *)
+  let args = [!node_name; !node_ip; string_port; mac;] @ ips in
     Rpc.create_notification "hello" args
 
 let update_server_if_state_has_changed () =
