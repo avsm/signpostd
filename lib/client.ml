@@ -81,15 +81,17 @@ let forward_dns_query_to_sp _ q =
   let src = !node_name in 
   let host = (Printf.sprintf "%s.%s.%s" dst src our_domain) in  
   lwt src_ip = Dns_resolver.gethostbyname 
-                 ~server:Config.external_ip ~dns_port:5354 host in 
-  let host = [dst;] @ (Re_str.(split (regexp_string ".") our_domain)) in  
-  let q_reply = DQ.({rcode=DP.(`NoError); aa=true;
-                     answer=[DP.({rr_name=host; rr_class=DP.(`IN);
-                              rr_ttl=60l;
-                              rr_rdata=(DP.(`A(List.hd src_ip)));})];
-                     authority=[];
-                     additional=[];}) in
-    return (Some(q_reply))
+                 ~server:Config.external_ip ~dns_port:5354 host in
+
+  match src_ip with
+    | [] ->
+        return(Some(nxdomain))
+    | src_ip::_ -> 
+        return(Some(DQ.({rcode=DP.(`NoError); aa=true;
+                  answer=[
+                    DP.({rr_name=q.DP.q_name; rr_class=DP.(`IN);
+                         rr_ttl=60l;rr_rdata=(DP.(`A(src_ip)));})];
+                     authority=[]; additional=[];}) ))
 
   (* Figure out the response from a query packet and its question section *)
 let get_response packet q = 
