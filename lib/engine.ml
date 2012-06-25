@@ -21,11 +21,11 @@ open Printf
 
 let tactics = [
 (*   (module DirectConnection : Sp.TacticSig); *)
+   (module AvahiConnection : Sp.TacticSig); 
    (module OpenvpnConnection : Sp.TacticSig);  
 (*   (module PrivoxyConnection : Sp.TacticSig);  *)
 (*   (module TorConnection : Sp.TacticSig);  *)
 (*  (module SshConnection : Sp.TacticSig);   *)
-(*   (module AvahiConnection : Sp.TacticSig); *)
 (*    (module NatpunchConnection : Sp.TacticSig);  *)
   ]
 
@@ -53,10 +53,8 @@ let iter_over_tactics wakener a b =
         Connections.IN_PROGRESS None 
       | _ -> () 
     in
-    lwt (dir, ip) = Tactic.test a b in 
-    lwt (res, dir, conn_id) = Tactic.connect a b (dir, ip) in 
-(*     lwt _ = Lwt_unix.sleep 20.0 in  *)
-(*     let res =true in  *)
+    lwt _ = Tactic.test a b in 
+    lwt res = Tactic.connect a b in 
     match res with
       | false -> 
           Printf.printf "XXXXX tactic %s failed\n%!" (Tactic.name ());
@@ -65,7 +63,7 @@ let iter_over_tactics wakener a b =
           Connections.store_tactic_state a b 
             (Tactic.name ()) Connections.SUCCESS_ACTIVE 
             None;
-          lwt _ = Tactic.enable a b (dir, conn_id) in
+          lwt _ = Tactic.enable a b in
           return(Lwt.wakeup wakener true)
   ) (tactics_not_attempted_or_failed_for a b) in
   match (Connections.get_link_status a b) with
@@ -78,7 +76,7 @@ let iter_over_tactics wakener a b =
 
 let connect wakener a b =
   eprintf "Engine is trying to connect %s and %s\n" a b;
-  lwt ret = iter_over_tactics wakener a b in
+  lwt _ = iter_over_tactics wakener a b in
   eprintf "XXXXXX got a first connection yeah!!!!\n%!";
     return () (* (Lwt.wakeup wakener ret) *)
 
@@ -91,11 +89,11 @@ let connect_using_tactic tactic a b =
     ) tactics in
     let module Tactic = (val t : Sp.TacticSig) in
     Printf.eprintf "found tactic %s\n%!" (Tactic.name ()); 
-    lwt (dir, ip) = Tactic.test a b in 
-    lwt (ret, dir, conn) = Tactic.connect a b (dir,ip) in
+    lwt _ = Tactic.test a b in 
+    lwt ret = Tactic.connect a b in
     lwt _ = 
       if (ret) then 
-        Tactic.enable a b (dir, conn) 
+        Tactic.enable a b 
       else
         return (false)
     in
@@ -140,7 +138,7 @@ let find a b =
       | Connections.SUCCESS_INACTIVE-> 
           return(Sp.IPAddressInstance(
           (Uri_IP.ipv4_to_string (Nodes.get_sp_ip b))))
-  with exn ->
+  with _ ->
     Printf.printf "[Nodes] cannot find node %s \n%!" b;
     return(Sp.Unreachable)
 
