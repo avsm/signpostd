@@ -27,7 +27,7 @@ exception Avahi_error
 
 let name () = "avahi"
 
-let connect a b meth =
+let connect a b =
   printf "[Avahi] Setting nat punch between host %s - %s\n%!" a b;
 
   (* register an opernflow hook for tcp connections destined to specific port *)
@@ -36,18 +36,16 @@ let connect a b meth =
       Rpc.CONNECT "service_discovery" []) in
     lwt res = (Nodes.send_blocking a rpc) in
     lwt res = (Nodes.send_blocking b rpc) in
-       return (false,0,0)
+       return (false)
   with exn -> 
     Printf.printf "[avahi] failed to enable tactic\n%!";
-    return (false,0,0)
+    return (false)
 
 let test a b =
-  return (0, Config.external_ip)
+  return true
 
-
-let enable a b state =
+let enable a b =
   return false 
-
 
 let handle_notification action method_name arg_list =
   match method_name with

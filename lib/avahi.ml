@@ -58,11 +58,6 @@ module Manager = struct
 
 
   let send_pkt controller dpid name data =
-(*     Printf.printf
- *     "entry
- *     %s\n%!"
- *     name;
- *     *)
     let rpc = (Rpc.create_tactic_notification "avahi"
        Rpc.CONNECT "service" 
        [(Nodes.get_local_name ());name; 
