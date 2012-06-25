@@ -33,6 +33,7 @@ module Manager = struct
     port: int;
     pid: int;
     dev_id:int;
+    conn_id:int32;
     mutable nodes: string list;
   }
 
@@ -228,7 +229,6 @@ module Manager = struct
 
       
     let start_openvpn_daemon server_ip port node domain typ conn_id = 
-      (* /openvpn_tactic.sh 10000 1 d2.signpo.st debian haris 10.10.0.3 tmp/ conf/ *)
       (* Generate conf directories and keys *)
       let cmd = Config.dir ^ 
                 "/client_tactics/openvpn/openvpn_tactic.sh" in
@@ -276,7 +276,7 @@ module Manager = struct
           Printf.printf "[openvpn] process (pid %d) ...\n%!" pid;
           pid
 
-    let get_domain_dev_id node domain port = 
+    let get_domain_dev_id node domain port ip conn_id = 
       if Hashtbl.mem conn_db.conns domain then  (
         let conn = Hashtbl.find conn_db.conns domain in
           if (List.mem (node^"."^Config.domain) conn.nodes) then (
@@ -299,7 +299,7 @@ module Manager = struct
         let _ = Printf.printf "[openvpn] start serv add device %s\n%!" 
           node in
         let dev_id = Tap.get_new_dev_ip () in 
-        let ip = Printf.sprintf "10.3.%d.1" dev_id in
+(*         let ip = Printf.sprintf "10.3.%d.1" dev_id in *)
         lwt _ = Tap.setup_dev dev_id ip in
         lwt dev_id = start_openvpn_daemon "0.0.0.0" port 
                        node domain "server" dev_id in 
@@ -308,45 +308,39 @@ module Manager = struct
                                       domain ^"/server.pid") in 
           Hashtbl.add conn_db.conns (domain) 
             {ip=ip;port=(int_of_string port);pid;
-             dev_id;nodes=[node ^ "." ^ Config.domain]};
+             dev_id;nodes=[node ^ "." ^ Config.domain]; conn_id;};
           return(dev_id) ) 
         
   let connect kind args =
     match kind with
     | "server" ->(
       try_lwt
-        let port::node::domain::sp_ip::_ = args in
-        lwt dev_id = get_domain_dev_id node domain port in
-        let dev = Printf.sprintf "tap%d" dev_id in
-        let local_ip = Uri_IP.string_to_ipv4 
-                         (Printf.sprintf "10.3.%d.1" dev_id) in  
-        let rem_ip = Uri_IP.string_to_ipv4 
-                       (Printf.sprintf "10.3.%d.2" dev_id) in 
-(*
-        lwt _ = Lwt_unix.sleep 1.0 in
-        let cmd = (Printf.sprintf "route add %s gw %s" sp_ip 
-                     (Uri_IP.ipv4_to_string rem_ip)) in
-        lwt _ = Lwt_unix.system cmd in
-        lwt _ = setup_flows dev local_ip rem_ip 
-                  (Uri_IP.string_to_ipv4 sp_ip) in
- *)
-          return (Uri_IP.ipv4_to_string local_ip)
+        let port::node::domain::conn_id::
+            local_ip ::_ = args in
+        let conn_id = Int32.of_string conn_id in 
+        lwt _ = get_domain_dev_id node domain port local_ip conn_id in
+          return ("true")
       with e -> 
         eprintf "[openvpn] server error: %s\n%!" (Printexc.to_string e); 
         raise (OpenVpnError((Printexc.to_string e)))
     )
     | "server_enable" ->(
       try_lwt
-        let dev_id::mac_addr::local_sp_ip:: remote_sp_ip::_ = args in
-        let dev = Printf.sprintf "tap%s" dev_id in
-        let local_ip = Uri_IP.string_to_ipv4 
-                         (Printf.sprintf "10.3.%s.1" dev_id) in  
-        let rem_ip = Uri_IP.string_to_ipv4 
-                       (Printf.sprintf "10.3.%s.2" dev_id) in 
-        lwt _ = setup_flows dev mac_addr local_ip rem_ip 
-                  (Uri_IP.string_to_ipv4 local_sp_ip) 
-                  (Uri_IP.string_to_ipv4 remote_sp_ip) in
-          return (Uri_IP.ipv4_to_string local_ip)
+        let conn_id::mac_addr::local_ip::remote_ip::
+            local_sp_ip::remote_sp_ip::_ = args in
+        let conn_id = Int32.of_string conn_id in
+        let local_ip = Uri_IP.string_to_ipv4 local_ip in 
+        let remote_ip = Uri_IP.string_to_ipv4 remote_ip in 
+        let local_sp_ip = Uri_IP.string_to_ipv4 local_sp_ip in 
+        let remote_sp_ip = Uri_IP.string_to_ipv4 remote_sp_ip in
+        let dev_id = ref 1 in 
+        let _ = Hashtbl.iter (fun _ conn -> 
+                                if (conn.conn_id = conn_id) then
+                                  dev_id := conn.dev_id) conn_db.conns in 
+        let dev = Printf.sprintf "tap%d" (!dev_id) in
+        lwt _ = setup_flows dev mac_addr local_ip remote_ip 
+                  local_sp_ip remote_sp_ip in
+          return ("true")
       with e -> 
         eprintf "[openvpn] server error: %s\n%!" (Printexc.to_string e); 
         raise (OpenVpnError((Printexc.to_string e)))
@@ -354,29 +348,14 @@ module Manager = struct
     | "client" -> (
       try_lwt
         let ip :: port :: node :: domain :: 
-            local_ip :: rem_ip :: sp_ip :: _ = args in
-        let sp_ip = Uri_IP.string_to_ipv4 sp_ip in 
+            local_ip :: _ = args in
         let dev_id = Tap.get_new_dev_ip () in
         let net_dev = Printf.sprintf "tap%d" dev_id in
         Printf.printf "setting dev %s ip %s\n%!" net_dev local_ip;
         lwt _ = Tap.setup_dev dev_id local_ip in
         lwt _ = start_openvpn_daemon ip port node domain 
                   "client" dev_id in
-(*         let mac_addr = "\x00\x00\x00\x00\x00\x00" in *)
-(*
-        lwt _ = setup_flows net_dev mac_addr (Uri_IP.string_to_ipv4 local_ip) 
-                  (Uri_IP.string_to_ipv4 rem_ip) sp_ip in
- *)
-(*
-        let pid = read_pid_from_file (Config.tmp_dir ^ "/" ^ 
-                                      domain ^  "/client.pid") in 
- *)
-(*
-          Hashtbl.add conn_db.conns (domain) 
-            {ip=local_ip; port=(int_of_string port);
-             pid;dev_id; nodes=[node^ "." ^ Config.domain];};
- *)
-          return (local_ip)
+          return ("true")
       with ex ->
         raise(OpenVpnError(Printexc.to_string ex)))
     | "client_enable" -> (
@@ -390,7 +369,7 @@ module Manager = struct
                   (Uri_IP.string_to_ipv4 local_ip) 
                   (Uri_IP.string_to_ipv4 rem_ip) 
                   local_sp_ip remote_sp_ip in
-          return (local_ip)
+          return ("true")
       with ex ->
         raise(OpenVpnError(Printexc.to_string ex)))    
     | _ -> raise(OpenVpnError(
