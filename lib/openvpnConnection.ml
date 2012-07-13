@@ -173,33 +173,34 @@ let test a b =
  * How do I enforce the Node module to provide the new ip to the end node? 
  *
  *)
-let start_vpn_server conn node port client domain =
+let start_vpn_server conn loc_node port rem_node domain =
   try_lwt
+    let q_loc_node = Printf.sprintf "%s.d%d" loc_node Config.signpost_number in
     let rpc = 
       (Rpc.create_tactic_request "openvpn" Rpc.CONNECT "server" 
-         [(string_of_int port); client;domain;
+         [(string_of_int port); rem_node;domain;
           (Int32.to_string conn.conn_id); 
-          (Uri_IP.ipv4_to_string (get_tactic_ip conn node)); ]) in
-      Nodes.send_blocking node rpc
+          (Uri_IP.ipv4_to_string (get_tactic_ip conn q_loc_node)); ]) in
+      Nodes.send_blocking loc_node rpc
   with ex -> 
-    Printf.printf "[openvpn ]Failed openvpn server %s:%s\n%!" node
+    Printf.printf "[openvpn ]Failed openvpn server %s:%s\n%!" loc_node
       (Printexc.to_string ex);
     raise Openvpn_error
 
-let start_vpn_client conn host dst_port node domain dst_node =
-  let Some(ip) = get_external_ip conn dst_node in 
+let start_vpn_client conn loc_node port q_rem_node domain rem_node =
+  let q_loc_node = Printf.sprintf "%s.d%d" loc_node Config.signpost_number in 
+  let Some(ip) = get_external_ip conn q_rem_node in 
   let ip = Uri_IP.ipv4_to_string ip in 
-  let rpc = (Rpc.create_tactic_request "openvpn" 
-               Rpc.CONNECT "client" 
-               [ip; (string_of_int dst_port);node;domain;
-                (Uri_IP.ipv4_to_string (get_tactic_ip conn host)); 
-                (Uri_IP.ipv4_to_string (get_tactic_ip conn dst_node));]) in
+  let rpc = (Rpc.create_tactic_request "openvpn" Rpc.CONNECT "client" 
+               [ip; (string_of_int port);q_rem_node;domain;
+                (Int32.to_string conn.conn_id); 
+                (Uri_IP.ipv4_to_string (get_tactic_ip conn q_loc_node));]) in
   try
-    lwt res = (Nodes.send_blocking host rpc) in 
+    lwt res = (Nodes.send_blocking loc_node rpc) in 
         return (res)
   with ex -> 
     Printf.printf "[openvpn]Failed openvpn client %s: %s\n%!" 
-      node (Printexc.to_string ex);
+      loc_node (Printexc.to_string ex);
     raise Openvpn_error
 
 let init_openvpn conn a b = 
@@ -265,72 +266,27 @@ let connect a b =
 (*
  * Enable functionality 
  * *)
-let setup_cloud_flows a_dev b_dev = 
-    let controller = (List.hd Sp_controller.
-                      switch_data.Sp_controller.of_ctrl) in 
-    let dpid = 
-      (List.hd Sp_controller.switch_data.Sp_controller.dpid)  in
-    let a_dev_str = Printf.sprintf "tap%s" a_dev in
-    let b_dev_str = Printf.sprintf "tap%s" b_dev in
-    let Some(a_port) = Net_cache.Port_cache.dev_to_port_id a_dev_str in
-    let Some(b_port) = Net_cache.Port_cache.dev_to_port_id b_dev_str in
-    let a_ip =Uri_IP.string_to_ipv4 (sprintf "10.3.%s.2" a_dev) in 
-    let b_ip =Uri_IP.string_to_ipv4 (sprintf "10.3.%s.3" b_dev) in 
-    let flow_wild = OP.Wildcards.({
-      in_port=false; dl_vlan=true; dl_src=true; dl_dst=true;
-      dl_type=false; nw_proto=true; tp_dst=true; tp_src=true;
-      nw_dst=(char_of_int 0); nw_src=(char_of_int 32);
-      dl_vlan_pcp=true; nw_tos=true;}) in
-    let flow = OP.Match.create_flow_match flow_wild 
-                 ~in_port:a_port ~dl_type:(0x0800) 
-                 ~nw_dst:b_ip () in
-    let actions = [OP.Flow.Output((OP.Port.In_port), 
-                                   2000);] in
-    let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.ADD 
-                ~idle_timeout:0 ~buffer_id:(-1) actions () in 
-    let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
-    lwt _ = OC.send_of_data controller dpid bs in
-    let flow = OP.Match.create_flow_match flow_wild 
-                 ~in_port:b_port ~dl_type:(0x0800) 
-                 ~nw_dst:a_ip () in
-    let actions = [OP.Flow.Output((OP.Port.In_port), 
-                                   2000);] in
-    let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.ADD 
-                ~idle_timeout:0 ~buffer_id:(-1) actions () in 
-    let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
-      OC.send_of_data controller dpid bs
-
-let enable_vpn_client conn a b = 
-  let rpc = (Rpc.create_tactic_request "openvpn" 
-               Rpc.CONNECT "client_enable" 
-               [(Int32.to_string conn.conn_id); 
-                (Uri_IP.ipv4_to_string (get_tactic_ip conn a));
-                (Uri_IP.ipv4_to_string (get_tactic_ip conn b));
-                (Nodes.get_node_mac b);
-                (Uri_IP.ipv4_to_string (Nodes.get_sp_ip a));
-                (Uri_IP.ipv4_to_string (Nodes.get_sp_ip b))]) in
-  try
-    lwt res = (Nodes.send_blocking a rpc) in 
-        return (res)
-  with ex -> 
-    Printf.printf "[openvpn]Failed openvpn client %s: %s\n%!" 
-      a (Printexc.to_string ex);
-    raise Openvpn_error
-
 let enable_openvpn conn a b = 
   (* Init server on b *)
   try_lwt
+    let [q_a; q_b] = List.map (
+      fun n -> Printf.sprintf "%s.d%d" n Config.signpost_number) [a; b] in 
     let rpc = 
-      (Rpc.create_tactic_request "openvpn" Rpc.CONNECT "server_enable" 
+      (Rpc.create_tactic_request "openvpn" Rpc.CONNECT "enable" 
          [(Int32.to_string conn.conn_id); (Nodes.get_node_mac b); 
-          (Uri_IP.ipv4_to_string (get_tactic_ip conn a));
-          (Uri_IP.ipv4_to_string (get_tactic_ip conn b));
+          (Uri_IP.ipv4_to_string (get_tactic_ip conn q_a));
+          (Uri_IP.ipv4_to_string (get_tactic_ip conn q_b));
           (Uri_IP.ipv4_to_string (Nodes.get_sp_ip a));
           (Uri_IP.ipv4_to_string (Nodes.get_sp_ip b))]) in
     lwt _ = Nodes.send_blocking a rpc in
-
-    (*Init client on b and get ip *)
-    lwt _ = enable_vpn_client conn b a in
+    let rpc = 
+      (Rpc.create_tactic_request "openvpn" Rpc.CONNECT "enable" 
+         [(Int32.to_string conn.conn_id); (Nodes.get_node_mac a); 
+          (Uri_IP.ipv4_to_string (get_tactic_ip conn q_b));
+          (Uri_IP.ipv4_to_string (get_tactic_ip conn q_a));
+          (Uri_IP.ipv4_to_string (Nodes.get_sp_ip b));
+          (Uri_IP.ipv4_to_string (Nodes.get_sp_ip a))]) in
+    lwt _ = Nodes.send_blocking b rpc in
       return ("true")
   with ex -> 
     Printf.printf "[openvpn ]Failed openvpn enabling %s->%s:%s\n%!" a b
@@ -339,17 +295,9 @@ let enable_openvpn conn a b =
 
 let enable a b =
   let (a, b) = gen_key a b in
-  let conn = get_state a b in 
-  match conn.direction with
-    | 1 -> lwt _ = enable_openvpn conn a b in
-                       return true
-    | 2 -> lwt _ = enable_openvpn conn b a in
-                       return true
-    | 3 -> 
-        lwt _ = enable_vpn_client conn b a in 
-        lwt _ = enable_vpn_client conn a b in 
-          return true
-    | _ -> return false
+  let conn = get_state a b in
+  lwt ret = enable_openvpn conn a b in
+    return (bool_of_string ret)
 
 (**********************************************************************
  * Handle tactic signature ********************************************)
