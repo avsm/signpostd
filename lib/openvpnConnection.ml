@@ -31,6 +31,7 @@ exception Openvpn_error
  * *)
 
 let openvpn_port = 1194
+let openvpn_port = 1500
 
 let name () = "openvpn"
 
@@ -127,8 +128,8 @@ let test a b =
                 a b (Printexc.to_string exn))
   in
 
-  lwt _ = (pairwise_connection_test a b 1) <?> 
-             pairwise_connection_test b a 2 in
+  lwt _ = (pairwise_connection_test a b 1) <&> 
+             (pairwise_connection_test b a 2) in
      match (!succ) with
       | true ->
           (* In case we have a direct tunnel then the nodes will receive an 
@@ -213,7 +214,7 @@ let init_openvpn conn a b =
                   Config.domain) in
     return true
 
-let start_local_server a b =
+let start_local_server conn a b =
   (* Maybe load a copy of the Openvpn module and let it 
    * do the magic? *)
   lwt _ = Openvpn.Manager.connect "server" 
@@ -221,12 +222,14 @@ let start_local_server a b =
              (sprintf "%s.d%d" a Config.signpost_number) ;
              (sprintf "d%d.%s" Config.signpost_number
                 Config.domain);
+             (Int32.to_string conn.conn_id);
              (Uri_IP.ipv4_to_string (Nodes.get_sp_ip a)); ] in 
   lwt ip = Openvpn.Manager.connect "server" 
              [(string_of_int openvpn_port); 
               (sprintf "%s.d%d" b Config.signpost_number) ;
               (sprintf "d%d.%s" Config.signpost_number
                  Config.domain);
+             (Int32.to_string conn.conn_id);
               (Uri_IP.ipv4_to_string (Nodes.get_sp_ip b));] in 
     return (ip)
 
@@ -239,7 +242,7 @@ let connect a b =
       | 1 -> init_openvpn conn a b 
       | 2 -> init_openvpn conn b a
       | 3 -> begin
-          lwt _ = start_local_server a b in
+          lwt _ = start_local_server conn a b in
           lwt _ = start_vpn_client conn b openvpn_port 
                     (sprintf "d%d" Config.signpost_number) 
                     (sprintf "d%d.%s" Config.signpost_number 
