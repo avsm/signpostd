@@ -324,7 +324,21 @@ module Manager = struct
         eprintf "[openvpn] server error: %s\n%!" (Printexc.to_string e); 
         raise (OpenVpnError((Printexc.to_string e)))
     )
-    | "server_enable" ->(
+    | "client" -> (
+      try_lwt
+        let ip :: port :: node :: domain :: local_ip :: _ = args in
+          Printf.printf "XXXX Hello world!!!\n%!";
+        let dev_id = Tap.get_new_dev_ip () in
+        let net_dev = Printf.sprintf "tap%d" dev_id in
+        Printf.printf "setting dev %s ip %s\n%!" net_dev local_ip;
+        lwt _ = Tap.setup_dev dev_id local_ip in
+        lwt _ = start_openvpn_daemon ip port node domain 
+                  "client" dev_id in
+          return ("true")
+      with ex ->
+        Printf.printf "[opevpn] client error: %s\n%!" (Printexc.to_string ex);
+        raise(OpenVpnError(Printexc.to_string ex)))
+    | "enable" ->(
       try_lwt
         let conn_id::mac_addr::local_ip::remote_ip::
             local_sp_ip::remote_sp_ip::_ = args in
@@ -345,33 +359,6 @@ module Manager = struct
         eprintf "[openvpn] server error: %s\n%!" (Printexc.to_string e); 
         raise (OpenVpnError((Printexc.to_string e)))
     )    
-    | "client" -> (
-      try_lwt
-        let ip :: port :: node :: domain :: 
-            local_ip :: _ = args in
-        let dev_id = Tap.get_new_dev_ip () in
-        let net_dev = Printf.sprintf "tap%d" dev_id in
-        Printf.printf "setting dev %s ip %s\n%!" net_dev local_ip;
-        lwt _ = Tap.setup_dev dev_id local_ip in
-        lwt _ = start_openvpn_daemon ip port node domain 
-                  "client" dev_id in
-          return ("true")
-      with ex ->
-        raise(OpenVpnError(Printexc.to_string ex)))
-    | "client_enable" -> (
-      try_lwt
-        let dev_id::local_ip::rem_ip::mac_addr::local_sp_ip
-          :: remote_sp_ip ::_ = args in
-        let local_sp_ip = Uri_IP.string_to_ipv4 local_sp_ip in 
-        let remote_sp_ip = Uri_IP.string_to_ipv4 remote_sp_ip in 
-        let net_dev = Printf.sprintf "tap%s" dev_id in
-        lwt _ = setup_flows net_dev mac_addr 
-                  (Uri_IP.string_to_ipv4 local_ip) 
-                  (Uri_IP.string_to_ipv4 rem_ip) 
-                  local_sp_ip remote_sp_ip in
-          return ("true")
-      with ex ->
-        raise(OpenVpnError(Printexc.to_string ex)))    
     | _ -> raise(OpenVpnError(
         (Printf.sprintf "[openvpn] invalid invalid action %s" kind)))
 
