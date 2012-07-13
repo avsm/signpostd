@@ -173,13 +173,6 @@ module Manager = struct
     let dpid = 
       (List.hd Sp_controller.switch_data.Sp_controller.dpid)  in
 
-    (* configure arp interception *)
-    let Some(port) = Net_cache.Port_cache.dev_to_port_id dev in
-    lwt _ = intercept_arp controller dpid local_ip 
-              OP.Port.Local (OP.Port.port_of_int port) in
-    lwt _ = intercept_arp controller dpid local_ip 
-              (OP.Port.port_of_int port) OP.Port.Local in 
-
     (* outgoing flow configuration *)
     let flow_wild = OP.Wildcards.({
       in_port=true; dl_vlan=true; dl_src=true; dl_dst=true;
@@ -299,7 +292,6 @@ module Manager = struct
         let _ = Printf.printf "[openvpn] start serv add device %s\n%!" 
           node in
         let dev_id = Tap.get_new_dev_ip () in 
-(*         let ip = Printf.sprintf "10.3.%d.1" dev_id in *)
         lwt _ = Tap.setup_dev dev_id ip in
         lwt dev_id = start_openvpn_daemon "0.0.0.0" port 
                        node domain "server" dev_id in 
@@ -326,14 +318,18 @@ module Manager = struct
     )
     | "client" -> (
       try_lwt
-        let ip :: port :: node :: domain :: local_ip :: _ = args in
-          Printf.printf "XXXX Hello world!!!\n%!";
+        let ip::port::node::domain::conn_id::local_ip::_ = args in
+        let conn_id = Int32.of_string conn_id in 
         let dev_id = Tap.get_new_dev_ip () in
         let net_dev = Printf.sprintf "tap%d" dev_id in
-        Printf.printf "setting dev %s ip %s\n%!" net_dev local_ip;
         lwt _ = Tap.setup_dev dev_id local_ip in
         lwt _ = start_openvpn_daemon ip port node domain 
                   "client" dev_id in
+        let pid = read_pid_from_file (Config.tmp_dir ^ "/" ^ 
+                                      domain ^"/client.pid") in 
+        let _ = Hashtbl.add conn_db.conns (domain) 
+            {ip=ip;port=(int_of_string port);pid;
+             dev_id;nodes=[node ^ "." ^ Config.domain]; conn_id;} in
           return ("true")
       with ex ->
         Printf.printf "[opevpn] client error: %s\n%!" (Printexc.to_string ex);
