@@ -112,7 +112,6 @@ let test a b =
       let ips = List.filter (fun a -> not (List.mem a not_ips) ) 
                   (Nodes.get_local_ips a) in  
 
-      let rpc =  in
       lwt res = 
         Nodes.send_blocking b (Rpc.create_tactic_request "openvpn" 
         Rpc.TEST "client" ([(string_of_int openvpn_port)] @ ips)) in   
