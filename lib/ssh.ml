@@ -22,6 +22,7 @@ open Lwt_list
 open Printf
 
 let ssh_port = 10000
+let tactic_priority = 5 
 
 module OP = Ofpacket
 module OC = Controller
@@ -40,6 +41,7 @@ module Manager = struct
     port : int;
     dev_id : int;
     mutable pid : int;
+    conn_id : int32;
     cl_key : string;
   }
 
@@ -47,7 +49,8 @@ module Manager = struct
    * authorized_keys file and destroy the connection *)
   type client_det = {
     s_key: string;
-    local_dev: int;
+    s_ip: int32;
+    s_conn_id: int32;
   }
 
   type conn_db_type = {
@@ -153,7 +156,8 @@ module Manager = struct
       (* test tcp connectivity *)
       | "client" -> (
           try_lwt
-            let _ :: ips = args in 
+            let ssh_port :: ips = args in 
+            let ssh_port = int_of_string ssh_port in
             lwt ip = ((lwt _ = Lwt_unix.sleep 2.0 in 
                          failwith("client can't connect") ) 
                         <?> (run_client ssh_port ips)) in
@@ -169,81 +173,8 @@ module Manager = struct
   (*******************************************************************
    *    connection functions     
    *******************************************************************)
-  let setup_flows dev local_ip rem_ip sp_ip = 
 
-    let controller = (List.hd Sp_controller.
-                      switch_data.Sp_controller.of_ctrl) in 
-    let dpid = 
-      (List.hd Sp_controller.switch_data.Sp_controller.dpid)  in
-
-    (* ovs-ofctl add-flow br0 arp,in_port=local,vlan_tci=0x0000,nw_dst=10.2.0.1,actions=output:26*)
-    let flow_wild = OP.Wildcards.({
-      in_port=false; dl_vlan=true; dl_src=true; dl_dst=true;
-      dl_type=false; nw_proto=true; tp_dst=true; tp_src=true;
-      nw_dst=(char_of_int 8); nw_src=(char_of_int 32);
-      dl_vlan_pcp=true; nw_tos=true;}) in
-    let flow = OP.Match.create_flow_match flow_wild 
-                 ~in_port:(OP.Port.int_of_port OP.Port.Local) 
-                 ~dl_type:(0x0806) ~nw_dst:local_ip () in
-    let Some(port) = Net_cache.Port_cache.dev_to_port_id dev in
-    let actions = [ OP.Flow.Output((OP.Port.port_of_int port), 
-                                   2000);] in
-    let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.ADD 
-                ~idle_timeout:0 ~buffer_id:(-1) actions () in 
-    let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
-    lwt _ = OC.send_of_data controller dpid bs in
- 
-    let flow = OP.Match.create_flow_match flow_wild 
-                 ~in_port:port ~dl_type:(0x0806) ~nw_dst:local_ip () in
-    let Some(port) = Net_cache.Port_cache.dev_to_port_id dev in
-    let actions = [ OP.Flow.Output(OP.Port.Local, 2000);] in
-    let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.ADD 
-                ~idle_timeout:0 ~buffer_id:(-1) actions () in 
-    let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
-    lwt _ = OC.send_of_data controller dpid bs in
-
-    let flow_wild = OP.Wildcards.({
-      in_port=true; dl_vlan=true; dl_src=true; dl_dst=true;
-      dl_type=false; nw_proto=true; tp_dst=true; tp_src=true;
-      nw_dst=(char_of_int 0); nw_src=(char_of_int 32);
-      dl_vlan_pcp=true; nw_tos=true;}) in
-    
-    let flow = OP.Match.create_flow_match flow_wild 
-                 ~dl_type:(0x0800) ~nw_dst:sp_ip () in
-    let Some(port) = Net_cache.Port_cache.dev_to_port_id dev in
-    let actions = [ OP.Flow.Set_nw_src(local_ip);
-                    OP.Flow.Set_nw_dst(rem_ip);
-                    OP.Flow.Output((OP.Port.port_of_int port), 
-                                   2000);] in
-    let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.ADD 
-                ~idle_timeout:0 ~buffer_id:(-1) actions () in 
-    let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
-    lwt _ = OC.send_of_data controller dpid bs in
-      
-    let ip_stream = (Unix.open_process_in
-                       (Config.dir ^ 
-                        "/client_tactics/get_local_device br0")) in
-    let ips = Re_str.split (Re_str.regexp " ") (input_line ip_stream) in 
-    let _::mac::_ = ips in
-    let mac = Net_cache.Arp_cache.mac_of_string mac in 
-    let flow_wild = OP.Wildcards.({
-      in_port=false; dl_vlan=true; dl_src=true; dl_dst=true;
-      dl_type=false; nw_proto=true; tp_dst=true; tp_src=true;
-      nw_dst=(char_of_int 0); nw_src=(char_of_int 32);
-      dl_vlan_pcp=true; nw_tos=true;}) in
-    let flow = OP.Match.create_flow_match flow_wild 
-                 ~in_port:port ~dl_type:(0x0800) 
-                 ~nw_dst:local_ip () in
-    let actions = [ OP.Flow.Set_nw_dst(local_ip);
-                     OP.Flow.Set_nw_src(sp_ip); 
-                    OP.Flow.Set_dl_dst(mac);
-                    OP.Flow.Output(OP.Port.Local, 2000);] in
-    let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.ADD 
-                ~idle_timeout:0  ~buffer_id:(-1) actions () in 
-    let bs = OP.Flow_mod.flow_mod_to_bitstring pkt in
-      OC.send_of_data controller dpid bs
-
-  let server_add_client domain dev_id = 
+  let server_add_client s_conn_id domain rem_sp_ip = 
     Printf.printf "[ssh] Adding new key from domain %s\n%!" domain;
     lwt _ = run_server () in 
     (* Dump keys in authorized_key file *)
@@ -256,18 +187,18 @@ module Manager = struct
     in
       (* if the domain is not in the cache, add it and update 
        * the authorized key file *)
-      lwt _ = 
-        if(Hashtbl.mem conn_db.conns_client domain) then (
-          Printf.eprintf "[ssh] connection already exists\n%!";
-          return ()
-        ) else (
-          lwt key = Key.ssh_pub_key_of_domain 
-                      ~server:(Config.iodine_node_ip) 
-                      ~port:5354 domain in
+    lwt _ = 
+      if(Hashtbl.mem conn_db.conns_client domain) then (
+        eprintf "[ssh] connection already exists\n%!";
+        return ()
+      ) else (
+        lwt key = Key.ssh_pub_key_of_domain 
+                    ~server:(Config.iodine_node_ip) 
+                    ~port:5354 domain in
           match key with 
             | Some(key) -> 
                 Hashtbl.add conn_db.conns_client domain 
-                  {s_key=(List.hd key);local_dev=dev_id;};
+                  {s_key=(List.hd key);s_ip=rem_sp_ip;s_conn_id;};
                 return (update_authorized_keys ())
             | None ->
                 return (Printf.printf 
@@ -276,104 +207,136 @@ module Manager = struct
       in
         return ("OK")
 
-  let client_add_server domain ip port local_dev = 
-    Printf.printf "[ssh] Adding know_host domain %s\n%!" domain;
+  let client_add_server conn_id node ip port dev_id = 
+    Printf.printf "[ssh] Adding know_host domain %s\n%!" node;
+    let domain = sprintf "%s.%s" node Config.domain in
     (* Dump keys in authorized_key file *)
     let update_known_hosts () = 
       let file = open_out (Config.conf_dir ^ "/known_hosts") in 
-        Hashtbl.iter (fun _ server ->
-                      output_string file (
-                        Printf.sprintf "[%s]:%d %s\n" 
-                          server.ip server.port                    
-                          server.cl_key)) conn_db.conns_server; 
+      let _ = 
+        Hashtbl.iter 
+          (fun _ server ->
+             output_string file (sprintf "[%s]:%d %s\n" server.ip server.port server.cl_key)) 
+          conn_db.conns_server 
+      in
         close_out file
     in
       (* if the domain is not in the cache, add it and update the authorized
        * key file *)    
-      lwt _ = 
-        if(Hashtbl.mem conn_db.conns_server domain) then (
-          Printf.eprintf "[ssh] A connection already exists\n%!";
-          return ()
-        ) else (
-          try_lwt 
-            lwt key = Key.ssh_pub_key_of_domain 
-                      ~server:(Config.iodine_node_ip) ~port:5354 domain in
-            match key with 
-              | Some(key) -> 
+    lwt _ = 
+      if(Hashtbl.mem conn_db.conns_server domain) then (
+        Printf.eprintf "[ssh] A connection already exists\n%!";
+        return ()
+      ) else (
+        lwt key = Key.ssh_pub_key_of_domain 
+                    ~server:(Config.iodine_node_ip) ~port:5354 domain in
+          match key with 
+            | Some(key) -> 
                 Hashtbl.add conn_db.conns_server domain 
-                  {cl_key=(List.hd key);port;ip; dev_id=local_dev;pid=0;};
+                  {cl_key=(List.hd key);port;ip; conn_id;dev_id;pid=0;};
                 return (update_known_hosts ())
-              | None ->
+            | None ->
                 return (Printf.printf "[ssh] no valid dnskey record\n%!")
-                with ex ->
-                  Printf.printf "[ssh] client fail %s\n%!" 
-                    (Printexc.to_string ex);
-                  raise (SshError(Printexc.to_string ex)))
-      in
-        return ("OK")
+      )
+    in
+      return ("OK")
 
-  let client_connect server_ip server_port local_dev remote_dev _ = 
+  let client_connect server_ip server_port local_dev remote_dev = 
     let cmd = Unix.getcwd () ^ "/client_tactics/ssh/client" in
     (* TODO: add pid in client state. *)
     let _ = Unix.create_process cmd [|cmd; Config.conf_dir; server_ip;
                                         (string_of_int server_port);
-                                        local_dev;remote_dev; |] 
+                                        (string_of_int local_dev);
+                                        (string_of_int remote_dev); |] 
               Unix.stdin Unix.stdout Unix.stderr in
-      return (Printf.sprintf "10.2.%s.2" remote_dev)
+      return ()
+  let setup_flows dev mac_addr local_ip rem_ip local_sp_ip 
+        remote_sp_ip = 
+
+    let controller = (List.hd Sp_controller.
+                      switch_data.Sp_controller.of_ctrl) in 
+    let dpid = 
+      (List.hd Sp_controller.switch_data.Sp_controller.dpid)  in
+
+    let flow_wild = OP.Wildcards.({
+      in_port=true; dl_vlan=true; dl_src=true; dl_dst=true;
+      dl_type=false; nw_proto=true; tp_dst=true; tp_src=true;
+      nw_dst=(char_of_int 0); nw_src=(char_of_int 32);
+      dl_vlan_pcp=true; nw_tos=true;}) in
+    
+    let flow = OP.Match.create_flow_match flow_wild 
+                 ~dl_type:(0x0800) ~nw_dst:remote_sp_ip () in
+    let Some(port) = Net_cache.Port_cache.dev_to_port_id dev in
+    let actions = [ OP.Flow.Set_nw_src(local_ip);
+                    OP.Flow.Set_nw_dst(rem_ip);
+                    OP.Flow.Set_dl_dst(
+                      (Net_cache.Arp_cache.mac_of_string mac_addr));                    
+                    OP.Flow.Output((OP.Port.port_of_int port), 
+                                   2000);] in
+    let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.ADD 
+                ~priority:tactic_priority 
+                ~idle_timeout:0 ~buffer_id:(-1) actions () in 
+    lwt _ = OC.send_of_data controller dpid 
+              (OP.Flow_mod.flow_mod_to_bitstring pkt) in
+    
+    (* get local mac address *)
+    let ip_stream = (Unix.open_process_in
+                       (Config.dir ^ 
+                        "/client_tactics/get_local_device br0")) in
+    let ips = Re_str.split (Re_str.regexp " ") (input_line ip_stream) in 
+    let _::mac::_ = ips in
+    let mac = Net_cache.Arp_cache.mac_of_string mac in
+
+    (* setup incoming flow *)
+    let flow_wild = OP.Wildcards.({
+      in_port=false; dl_vlan=true; dl_src=true; dl_dst=true;
+      dl_type=false; nw_proto=true; tp_dst=true; tp_src=true;
+      nw_dst=(char_of_int 0); nw_src=(char_of_int 32);
+      dl_vlan_pcp=true; nw_tos=true;}) in
+    let flow = OP.Match.create_flow_match flow_wild 
+                 ~in_port:port ~dl_type:(0x0800) 
+                 ~nw_dst:local_ip () in
+    let actions = [ OP.Flow.Set_nw_dst(local_sp_ip);
+                     OP.Flow.Set_nw_src(remote_sp_ip); 
+                    OP.Flow.Set_dl_dst(mac);
+                    OP.Flow.Output(OP.Port.Local, 2000);] in
+    let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.ADD 
+                ~priority:tactic_priority ~idle_timeout:0  
+                ~buffer_id:(-1) actions () in 
+      OC.send_of_data controller dpid 
+        (OP.Flow_mod.flow_mod_to_bitstring pkt)
 
   let connect kind args =
     try_lwt
     match kind with
       | "server" -> (
-          let dev_id = Tap.get_new_dev_ip () in
-          let remote_name::sp_ip :: _ =  args in 
-            server_add_client (List.hd args) dev_id;
-            let dev = Printf.sprintf "tap%d" dev_id in
-            let ip = Printf.sprintf "10.2.%d.1" dev_id in 
-            let local_ip = Uri_IP.string_to_ipv4 
-                           (Printf.sprintf "10.2.%d.1" dev_id) in  
-            let rem_ip = Uri_IP.string_to_ipv4 
-                           (Printf.sprintf "10.2.%d.2" dev_id) in 
-            lwt _ = Tap.setup_dev dev_id ip in 
-            lwt _ = Lwt_unix.sleep 1.0 in
-            lwt _ = setup_flows dev local_ip rem_ip 
-                      (Uri_IP.string_to_ipv4 sp_ip) in
-              return(ip))
+        let rem_node::conn_id::rem_sp_ip::loc_tun_ip::_ = args in 
+        let conn_id = Int32.of_string conn_id in
+        let rem_sp_ip = Uri_IP.string_to_ipv4 rem_sp_ip in
 
+        (* Adding remote node public key in authorized keys file *)
+        let q_rem_node = sprintf "%s.%s" rem_node Config.domain in
+        let _ = server_add_client conn_id q_rem_node rem_sp_ip in
+
+        (* Setup tunel tun tap device *)
+        let dev_id = Tap.get_new_dev_ip () in
+        lwt _ = Tap.setup_dev dev_id loc_tun_ip in 
+          return(string_of_int dev_id))
       | "client" ->
-          let server_ip = List.nth args 0 in 
-          let server_port = (int_of_string (List.nth args 1)) in 
-          let domain = List.nth args 2 in 
-          let subnet = List.nth args 3 in 
-          let rem_ip = List.nth args 4 in 
-          let sp_ip = Uri_IP.string_to_ipv4 (List.nth args 5) in 
-          let local_dev = Tap.get_new_dev_ip () in        
-          lwt _ = client_add_server domain server_ip 
-                    server_port local_dev in 
-          (* Ip address is constructed using the dev number in the 3 
-           * octet *)
-          let remote_dev = 
-            List.nth (Re_str.split (Re_str.regexp "\\.") subnet) 2 in 
-          lwt _ = Tap.setup_dev local_dev subnet in                 
-          lwt _ = Lwt_unix.sleep 1.0 in
-          let dev = Printf.sprintf "tap%d" local_dev in
-          let rem_ip = Uri_IP.string_to_ipv4 rem_ip in 
-          lwt _ = setup_flows dev (Uri_IP.string_to_ipv4 subnet) 
-                    rem_ip sp_ip in
-           
-            (* TODO: temporary hack to allow 2 nodes to talk when connected 
-            * over the server. I need to set 2 different subnets. With the 
-            * usage of openflow, this can be corrected. *) 
-          let gw_ip = Printf.sprintf "10.2.%s.1" remote_dev in 
-          lwt _ = Lwt_unix.system 
-                    (Printf.sprintf "route add -net 10.2.0.0/16 gw %s" 
-                       gw_ip) in              
-          let cmd = (Printf.sprintf "route add %s gw %s"
-                       (Uri_IP.ipv4_to_string sp_ip) gw_ip) in
-          Printf.printf "XXXXX %s\n" cmd;
-          lwt _ = Lwt_unix.system cmd in
-             client_connect server_ip server_port 
-              (string_of_int local_dev) remote_dev subnet  
+        let server_ip::ssh_port::rem_node::conn_id::loc_tun_ip::
+            rem_dev:: _ = args in
+        let conn_id = Int32.of_string conn_id in 
+        let ssh_port = int_of_string ssh_port in 
+        let rem_dev = int_of_string rem_dev in 
+          
+        let loc_dev = Tap.get_new_dev_ip () in 
+        lwt _ = client_add_server conn_id rem_node server_ip 
+                  ssh_port loc_dev in
+        lwt _ = Tap.setup_dev loc_dev loc_tun_ip in
+
+        lwt _ = client_connect server_ip ssh_port loc_dev rem_dev in
+
+          return (string_of_int loc_dev)
       | _ -> 
           Printf.eprintf "[ssh] Invalid connect kind %s\n%!" kind;
           raise (SshError "Invalid connect kind")

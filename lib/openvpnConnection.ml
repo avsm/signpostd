@@ -31,7 +31,6 @@ exception Openvpn_error
  * *)
 
 let openvpn_port = 1194
-let openvpn_port = 1500
 
 let name () = "openvpn"
 
@@ -104,15 +103,19 @@ let test a b =
 
   let pairwise_connection_test a b direction =
     try_lwt 
-      Printf.printf "[openvpn] Trying to start ssh service...\n%!";
+      Printf.printf "[openvpn] starting testing server...\n%!";
       let rpc = (Rpc.create_tactic_request "openvpn" 
         Rpc.TEST "server_start" [(string_of_int openvpn_port)]) in
       lwt _ = (Nodes.send_blocking a rpc) in 
   
-      let ips = Nodes.get_local_ips a in 
-      let rpc = (Rpc.create_tactic_request "openvpn" 
-        Rpc.TEST "client" ([(string_of_int openvpn_port)] @ ips)) in
-      lwt res = (Nodes.send_blocking b rpc) in   
+      let not_ips =  Nodes.get_local_ips b in
+      let ips = List.filter (fun a -> not (List.mem a not_ips) ) 
+                  (Nodes.get_local_ips a) in  
+
+      let rpc =  in
+      lwt res = 
+        Nodes.send_blocking b (Rpc.create_tactic_request "openvpn" 
+        Rpc.TEST "client" ([(string_of_int openvpn_port)] @ ips)) in   
   
       let rpc = (Rpc.create_tactic_request "openvpn" 
         Rpc.TEST "server_stop" [(string_of_int openvpn_port)]) in
