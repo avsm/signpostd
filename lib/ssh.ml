@@ -34,33 +34,29 @@ module Manager = struct
   (**************************************************
    *         Tactic state
    **************************************************)
-  (* storing all required informations to rebuild 
-   * known_hosts file and destroy the connection *)
-  type server_det = {
-    ip : string;
-    port : int;
-    dev_id : int;
-    mutable pid : int;
-    conn_id : int32;
-    cl_key : string;
-  }
 
-  (* storing all required informations to rebuild 
+  type conn_type =
+    | SSH_SERVER
+    | SSH_CLIENT
+
+ (* storing all required informations to rebuild 
    * authorized_keys file and destroy the connection *)
   type client_det = {
-    s_key: string;
-    s_ip: int32;
-    s_conn_id: int32;
+    key: string;
+    ip: int32;
+    port : int;
+    conn_id: int32;
+    dev_id : int;
+    mutable pid : int;
+    conn_tp : conn_type;
   }
 
   type conn_db_type = {
-    conns_server: (string, server_det) Hashtbl.t;
-    conns_client: (string, client_det) Hashtbl.t;
+    conns: (string, client_det) Hashtbl.t;
     mutable server_pid: int option;
   }
 
-  let conn_db = {conns_server=(Hashtbl.create 32); 
-                 conns_client=(Hashtbl.create 32); 
+  let conn_db = {conns=(Hashtbl.create 32); 
                  server_pid=None;}
 
 (**********************************************************
@@ -143,7 +139,6 @@ module Manager = struct
  *     sleeper] in  *)
      Lwt.ignore_result(Lwt_list.iter_p (send_pkt_to wakener port) ips);
      lwt _ = (Lwt_unix.sleep 2.0) <?> listener in 
-       printf "list iter failed\n%!";
        match (!ret) with
          | None -> raise (SshError("Error"))
          | Some(ip) -> return (ip)
@@ -174,21 +169,22 @@ module Manager = struct
    *    connection functions     
    *******************************************************************)
 
-  let server_add_client s_conn_id domain rem_sp_ip = 
+  let server_add_client conn_id domain rem_extern_ip loc_dev_id = 
     Printf.printf "[ssh] Adding new key from domain %s\n%!" domain;
     lwt _ = run_server () in 
     (* Dump keys in authorized_key file *)
     let update_authorized_keys () = 
       let file = open_out "/root/.ssh/signpost_tunnel" in 
-        Hashtbl.iter (fun _ client -> 
-                        output_string file (client.s_key ^ "\n") 
-        ) conn_db.conns_client; 
+        Hashtbl.iter (fun _ client ->
+                        if (client.conn_tp = SSH_CLIENT) then
+                             output_string file (client.key ^ "\n") 
+        ) conn_db.conns; 
         close_out file
     in
       (* if the domain is not in the cache, add it and update 
        * the authorized key file *)
     lwt _ = 
-      if(Hashtbl.mem conn_db.conns_client domain) then (
+      if(Hashtbl.mem conn_db.conns domain) then (
         eprintf "[ssh] connection already exists\n%!";
         return ()
       ) else (
@@ -197,8 +193,10 @@ module Manager = struct
                     ~port:5354 domain in
           match key with 
             | Some(key) -> 
-                Hashtbl.add conn_db.conns_client domain 
-                  {s_key=(List.hd key);s_ip=rem_sp_ip;s_conn_id;};
+                Hashtbl.add conn_db.conns domain 
+                  {key=(List.hd key);ip=rem_extern_ip;
+                   port=0; conn_id; dev_id=(loc_dev_id);
+                   pid=0;  conn_tp=SSH_CLIENT; };
                 return (update_authorized_keys ())
             | None ->
                 return (Printf.printf 
@@ -216,15 +214,18 @@ module Manager = struct
       let _ = 
         Hashtbl.iter 
           (fun _ server ->
-             output_string file (sprintf "[%s]:%d %s\n" server.ip server.port server.cl_key)) 
-          conn_db.conns_server 
+             if (server.conn_tp = SSH_SERVER) then
+                 output_string file (sprintf "[%s]:%d %s\n" 
+                                       (Uri_IP.ipv4_to_string server.ip)
+                                       server.port server.key)) 
+          conn_db.conns 
       in
         close_out file
     in
       (* if the domain is not in the cache, add it and update the authorized
        * key file *)    
     lwt _ = 
-      if(Hashtbl.mem conn_db.conns_server domain) then (
+      if(Hashtbl.mem conn_db.conns domain) then (
         Printf.eprintf "[ssh] A connection already exists\n%!";
         return ()
       ) else (
@@ -232,8 +233,9 @@ module Manager = struct
                     ~server:(Config.iodine_node_ip) ~port:5354 domain in
           match key with 
             | Some(key) -> 
-                Hashtbl.add conn_db.conns_server domain 
-                  {cl_key=(List.hd key);port;ip; conn_id;dev_id;pid=0;};
+                Hashtbl.add conn_db.conns domain 
+                  {key=(List.hd key);port;ip; conn_id;dev_id;pid=0;
+                  conn_tp=SSH_SERVER; };
                 return (update_known_hosts ())
             | None ->
                 return (Printf.printf "[ssh] no valid dnskey record\n%!")
@@ -250,6 +252,7 @@ module Manager = struct
                                         (string_of_int remote_dev); |] 
               Unix.stdin Unix.stdout Unix.stderr in
       return ()
+
   let setup_flows dev mac_addr local_ip rem_ip local_sp_ip 
         remote_sp_ip = 
 
@@ -308,38 +311,59 @@ module Manager = struct
 
   let connect kind args =
     try_lwt
-    match kind with
-      | "server" -> (
-        let rem_node::conn_id::rem_sp_ip::loc_tun_ip::_ = args in 
-        let conn_id = Int32.of_string conn_id in
-        let rem_sp_ip = Uri_IP.string_to_ipv4 rem_sp_ip in
+      match kind with
+          | "server" -> (
+          let rem_node::conn_id::rem_sp_ip::loc_tun_ip::_ = args in 
+          let conn_id = Int32.of_string conn_id in
+          let rem_sp_ip = Uri_IP.string_to_ipv4 rem_sp_ip in
+  
+          (* Setup tunel tun tap device *)
+          let dev_id = Tap.get_new_dev_ip () in
+          lwt _ = Tap.setup_dev dev_id loc_tun_ip in 
 
-        (* Adding remote node public key in authorized keys file *)
-        let q_rem_node = sprintf "%s.%s" rem_node Config.domain in
-        let _ = server_add_client conn_id q_rem_node rem_sp_ip in
-
-        (* Setup tunel tun tap device *)
-        let dev_id = Tap.get_new_dev_ip () in
-        lwt _ = Tap.setup_dev dev_id loc_tun_ip in 
-          return(string_of_int dev_id))
-      | "client" ->
-        let server_ip::ssh_port::rem_node::conn_id::loc_tun_ip::
-            rem_dev:: _ = args in
-        let conn_id = Int32.of_string conn_id in 
-        let ssh_port = int_of_string ssh_port in 
-        let rem_dev = int_of_string rem_dev in 
-          
-        let loc_dev = Tap.get_new_dev_ip () in 
-        lwt _ = client_add_server conn_id rem_node server_ip 
-                  ssh_port loc_dev in
-        lwt _ = Tap.setup_dev loc_dev loc_tun_ip in
-
-        lwt _ = client_connect server_ip ssh_port loc_dev rem_dev in
-
-          return (string_of_int loc_dev)
-      | _ -> 
-          Printf.eprintf "[ssh] Invalid connect kind %s\n%!" kind;
-          raise (SshError "Invalid connect kind")
+          (* Adding remote node public key in authorized keys file *)
+          let q_rem_node = sprintf "%s.%s" rem_node Config.domain in
+          let _ = server_add_client conn_id q_rem_node rem_sp_ip dev_id in
+  
+           return(string_of_int dev_id))
+        | "client" ->
+          let server_ip::ssh_port::rem_node::conn_id::loc_tun_ip::
+              rem_dev:: _ = args in
+          let conn_id = Int32.of_string conn_id in 
+          let ssh_port = int_of_string ssh_port in 
+          let rem_dev = int_of_string rem_dev in 
+          let loc_dev = Tap.get_new_dev_ip () in 
+          lwt _ = client_add_server conn_id rem_node
+                    (Uri_IP.string_to_ipv4 server_ip)
+                    ssh_port loc_dev in
+          lwt _ = Tap.setup_dev loc_dev loc_tun_ip in
+          lwt _ = client_connect server_ip ssh_port loc_dev rem_dev in
+           return (string_of_int loc_dev)
+        | "enable" -> begin
+          let conn_id::mac_addr::local_ip::remote_ip::
+              local_sp_ip::remote_sp_ip::_ = args in
+          let conn_id = Int32.of_string conn_id in
+          let [local_ip; remote_ip; local_sp_ip; remote_sp_ip;] = 
+            List.map Uri_IP.string_to_ipv4 
+              [local_ip; remote_ip; local_sp_ip; remote_sp_ip;] in 
+          let dev_id = ref None in 
+          let _ = 
+            Hashtbl.iter 
+              (fun _ conn -> 
+                 if (conn.conn_id = conn_id) then
+                   dev_id := Some(conn.dev_id)) conn_db.conns
+          in 
+            match (!dev_id) with
+              | None -> 
+                  raise (SshError(("openvpn enable invalid conn_id")))
+              | Some (dev) ->
+                  (lwt _ = setup_flows (sprintf "tap%d" dev) mac_addr 
+                            local_ip remote_ip local_sp_ip remote_sp_ip in
+                    return ("true"))
+          end
+        | _ -> 
+            Printf.eprintf "[ssh] Invalid connect kind %s\n%!" kind;
+            raise (SshError("Invalid connect kind"))
       with exn ->
         Printf.eprintf "[ssh]Error:%s\n%!" (Printexc.to_string exn);
         raise (SshError(Printexc.to_string exn))
