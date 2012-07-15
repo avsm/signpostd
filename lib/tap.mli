@@ -16,4 +16,5 @@
  *)
 
 val get_new_dev_ip : unit -> int
+val unset_dev : int -> string -> unit Lwt.t
 val setup_dev : int -> string -> string Lwt.t

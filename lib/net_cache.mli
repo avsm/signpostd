@@ -20,6 +20,7 @@ module Routing : sig
   val load_routing_table: unit -> unit Lwt.t
   val get_next_hop: int32 -> (int32 * int32 * string)
   val add_next_hop: int32 -> int32 -> int32 -> string -> unit
+  val del_next_hop: int32 -> int32 -> int32 -> string -> unit
   val string_rev : string -> string 
 end
 
@@ -43,6 +44,7 @@ module Arp_cache : sig
   val string_of_mac : string -> string
   val mac_of_string : string -> string
   val add_mapping : string -> int32 -> unit
+  val del_mapping : int32 -> unit
   val mac_of_ip : int32 -> string option
   val ip_of_mac : string -> int32 option
   val get_next_hop_mac: int32 -> string option
@@ -56,7 +58,6 @@ module Port_cache : sig
   val port_id_to_dev : int -> string option
 
   val add_mac: string -> int -> unit
-  val del_mac: string -> unit
   val port_id_of_mac : string -> int option
   val mac_of_port_id : int -> string option
 end

@@ -107,11 +107,20 @@ module Routing = struct
   let add_next_hop ip mask gw dev_id = 
     let entry = {ip; mask; gw; dev_id;} in 
     let _ = 
-      if (List.mem entry routing_tbl.tbl) then 
+      if (List.mem entry routing_tbl.tbl) then
         ()
-      else 
+      else
         routing_tbl.tbl <- routing_tbl.tbl @ [entry;]
     in
+      ()
+
+  let del_next_hop ip mask gw dev_id = 
+    let entry = {ip; mask; gw; dev_id;} in 
+    let _ = 
+      if (List.mem entry routing_tbl.tbl) then 
+        routing_tbl.tbl <- 
+          (List.filter (fun a -> entry <> a) routing_tbl.tbl)
+    in      
       ()
 end
 
@@ -154,19 +163,11 @@ module Port_cache = struct
   let add_mac mac port_id = 
 (*     Printf.printf "[dev_cahce] adding mac %s on port %d\n%!"  *)
 (*       (string_of_mac mac) port_id; *)
-    if (Hashtbl.mem mac_cache mac) then (
-      Hashtbl.remove mac_cache mac;
-      Hashtbl.add mac_cache mac port_id
-    ) else
+    if (Hashtbl.mem mac_cache mac) then
+      Hashtbl.replace mac_cache mac port_id
+    else
       Hashtbl.add mac_cache mac port_id
 
-  let del_mac mac = 
-(*
-    Printf.printf "[dev_cahce] removing device %s\n%!" 
-      (Arp_cache.string_of_mac mac);
- *)
-    if (Hashtbl.mem mac_cache mac) then 
-      Hashtbl.remove mac_cache mac
 
   let port_id_of_mac mac =
     Printf.printf "port_id_of_mac %s\n%!" (string_of_mac mac);
@@ -192,11 +193,21 @@ module Arp_cache = struct
     let (_,gw,_) = Routing.get_next_hop ip in 
       match gw with 
         | 0l -> (
-            if (Hashtbl.mem cache ip) then (
-              Hashtbl.remove cache ip;
+            if (Hashtbl.mem cache ip) then 
+              Hashtbl.replace cache ip mac
+            else
               Hashtbl.add cache ip mac
-            ) else
-              Hashtbl.add cache ip mac
+          ) 
+        | _ -> Printf.printf "[net_cache] ip %s is not local. ignoring.\n%!"
+                 (Uri_IP.ipv4_to_string ip)
+
+  let del_mapping ip = 
+    (* Check if ip addr is local *)
+    let (_,gw,_) = Routing.get_next_hop ip in 
+      match gw with 
+        | 0l -> (
+            if (Hashtbl.mem cache ip) then 
+              Hashtbl.remove cache ip
           ) 
         | _ -> Printf.printf "[net_cache] ip %s is not local. ignoring.\n%!"
                  (Uri_IP.ipv4_to_string ip)
