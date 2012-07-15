@@ -440,7 +440,7 @@ module Manager = struct
 (*
  * tunnel disabling code
  * *)
-  let unset_flows dev local_tun_ip local_sp_ip = 
+  let unset_flows dev local_tun_ip remote_sp_ip = 
     let controller = (List.hd Sp_controller.
                       switch_data.Sp_controller.of_ctrl) in 
     let dpid = 
@@ -453,7 +453,7 @@ module Manager = struct
       dl_vlan_pcp=true; nw_tos=true;}) in
     
     let flow = OP.Match.create_flow_match flow_wild 
-                 ~dl_type:(0x0800) ~nw_dst:local_sp_ip () in
+                 ~dl_type:(0x0800) ~nw_dst:remote_sp_ip () in
     let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.DELETE_STRICT 
                 ~priority:tactic_priority 
                 ~idle_timeout:0 ~buffer_id:(-1) [] () in 
@@ -478,12 +478,12 @@ module Manager = struct
   let disable kind args =
     try_lwt
       match kind with
-        | "enable" -> begin
-          let conn_id::local_tun_ip::local_sp_ip::_ = args in
+        | "disable" -> begin
+          let conn_id::local_tun_ip::remote_sp_ip::_ = args in
           let conn_id = Int32.of_string conn_id in
-          let [local_tun_ip; local_sp_ip;] = 
+          let [local_tun_ip; remote_sp_ip;] = 
             List.map Uri_IP.string_to_ipv4 
-              [local_tun_ip; local_sp_ip;] in 
+              [local_tun_ip; remote_sp_ip;] in 
           let dev_id = ref None in 
           let _ = 
             Hashtbl.iter 
@@ -496,12 +496,13 @@ module Manager = struct
                   raise (SshError(("openvpn disable invalid conn_id")))
               | Some (dev) ->
                   (lwt _ = unset_flows (sprintf "tap%d" dev)  
-                            local_tun_ip local_sp_ip in
+                            local_tun_ip remote_sp_ip in
                     return "true")
           end
       with exn ->
         Printf.eprintf "[ssh]Error:%s\n%!" (Printexc.to_string exn);
         raise (SshError(Printexc.to_string exn))
+
   (*************************************************************************
    *             TEARDOWN methods of tactic
    * ***********************************************************************)

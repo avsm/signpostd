@@ -377,15 +377,15 @@ let enable a b =
 (*
  * disable code
  * *)
-let disable_ssh conn a = 
+let disable_ssh conn a b = 
   (* Init server on b *)
   try_lwt
     let q_a = Printf.sprintf "%s.d%d" a Config.signpost_number in 
     let rpc_a = 
-      (Rpc.create_tactic_request "ssh" Rpc.DISABLE "enable" 
+      (Rpc.create_tactic_request "ssh" Rpc.DISABLE "disable" 
          [(Int32.to_string conn.conn_id); 
           (Uri_IP.ipv4_to_string (get_tactic_ip conn q_a));
-          (Uri_IP.ipv4_to_string (Nodes.get_sp_ip a))]) in
+          (Uri_IP.ipv4_to_string (Nodes.get_sp_ip b))]) in
     lwt _ = Nodes.send_blocking a rpc_a in
       return ()
   with ex -> 
@@ -425,8 +425,8 @@ let disable_cloud_ssh conn a b =
 let disable a b =
   let (a, b) = gen_key a b in
   let conn = get_state a b in
-  lwt _ = (disable_ssh conn a) <&>
-          (disable_ssh conn b) <&>
+  lwt _ = (disable_ssh conn a b) <&>
+          (disable_ssh conn b a) <&>
           (disable_cloud_ssh conn a b) in
   return true
 
