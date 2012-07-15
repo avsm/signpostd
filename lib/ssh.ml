@@ -233,6 +233,7 @@ module Manager = struct
                     ~server:(Config.iodine_node_ip) ~port:5354 domain in
           match key with 
             | Some(key) -> 
+(*                 let domain = sprintf "%s.%s" node Config.domain in *)
                 Hashtbl.add conn_db.conns domain 
                   {key=(List.hd key);port;ip; conn_id;dev_id;pid=0;
                   conn_tp=SSH_SERVER; };
@@ -246,12 +247,12 @@ module Manager = struct
   let client_connect server_ip server_port local_dev remote_dev = 
     let cmd = Unix.getcwd () ^ "/client_tactics/ssh/client" in
     (* TODO: add pid in client state. *)
-    let _ = Unix.create_process cmd [|cmd; Config.conf_dir; server_ip;
+    let pid = Unix.create_process cmd [|cmd; Config.conf_dir; server_ip;
                                         (string_of_int server_port);
                                         (string_of_int local_dev);
                                         (string_of_int remote_dev); |] 
               Unix.stdin Unix.stdout Unix.stderr in
-      return ()
+      return (pid)
 
   let setup_flows dev mac_addr local_ip rem_ip local_sp_ip 
         remote_sp_ip = 
@@ -337,8 +338,79 @@ module Manager = struct
                     (Uri_IP.string_to_ipv4 server_ip)
                     ssh_port loc_dev in
           lwt _ = Tap.setup_dev loc_dev loc_tun_ip in
-          lwt _ = client_connect server_ip ssh_port loc_dev rem_dev in
-           return (string_of_int loc_dev)
+          lwt pid = client_connect server_ip ssh_port loc_dev rem_dev in
+
+          (* update pid from client state *)
+          let domain = sprintf "%s.%s" rem_node Config.domain in
+          let conn = Hashtbl.find conn_db.conns domain in 
+            conn.pid <- pid;
+            return (string_of_int loc_dev)
+        | _ -> 
+            Printf.eprintf "[ssh] Invalid connect kind %s\n%!" kind;
+            raise (SshError("Invalid connect kind"))
+      with exn ->
+        Printf.eprintf "[ssh]Error:%s\n%!" (Printexc.to_string exn);
+        raise (SshError(Printexc.to_string exn))
+(*
+ * tunnel enabling code
+ * *)
+  let setup_flows dev mac_addr local_ip rem_ip local_sp_ip 
+        remote_sp_ip = 
+    let controller = (List.hd Sp_controller.
+                      switch_data.Sp_controller.of_ctrl) in 
+    let dpid = 
+      (List.hd Sp_controller.switch_data.Sp_controller.dpid)  in
+
+    let flow_wild = OP.Wildcards.({
+      in_port=true; dl_vlan=true; dl_src=true; dl_dst=true;
+      dl_type=false; nw_proto=true; tp_dst=true; tp_src=true;
+      nw_dst=(char_of_int 0); nw_src=(char_of_int 32);
+      dl_vlan_pcp=true; nw_tos=true;}) in
+    
+    let flow = OP.Match.create_flow_match flow_wild 
+                 ~dl_type:(0x0800) ~nw_dst:remote_sp_ip () in
+    let Some(port) = Net_cache.Port_cache.dev_to_port_id dev in
+    let actions = [ OP.Flow.Set_nw_src(local_ip);
+                    OP.Flow.Set_nw_dst(rem_ip);
+                    OP.Flow.Set_dl_dst(
+                      (Net_cache.Arp_cache.mac_of_string mac_addr));                    
+                    OP.Flow.Output((OP.Port.port_of_int port), 
+                                   2000);] in
+    let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.ADD 
+                ~priority:tactic_priority 
+                ~idle_timeout:0 ~buffer_id:(-1) actions () in 
+    lwt _ = OC.send_of_data controller dpid 
+              (OP.Flow_mod.flow_mod_to_bitstring pkt) in
+    
+    (* get local mac address *)
+    let ip_stream = (Unix.open_process_in
+                       (Config.dir ^ 
+                        "/client_tactics/get_local_device br0")) in
+    let ips = Re_str.split (Re_str.regexp " ") (input_line ip_stream) in 
+    let _::mac::_ = ips in
+    let mac = Net_cache.Arp_cache.mac_of_string mac in
+
+    (* setup incoming flow *)
+    let flow_wild = OP.Wildcards.({
+      in_port=false; dl_vlan=true; dl_src=true; dl_dst=true;
+      dl_type=false; nw_proto=true; tp_dst=true; tp_src=true;
+      nw_dst=(char_of_int 0); nw_src=(char_of_int 32);
+      dl_vlan_pcp=true; nw_tos=true;}) in
+    let flow = OP.Match.create_flow_match flow_wild ~in_port:port 
+                 ~dl_type:(0x0800) ~nw_dst:local_ip () in
+    let actions = [ OP.Flow.Set_nw_dst(local_sp_ip);
+                     OP.Flow.Set_nw_src(remote_sp_ip); 
+                    OP.Flow.Set_dl_dst(mac);
+                    OP.Flow.Output(OP.Port.Local, 2000);] in
+    let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.ADD 
+                ~priority:tactic_priority ~idle_timeout:0  
+                ~buffer_id:(-1) actions () in 
+      OC.send_of_data controller dpid 
+        (OP.Flow_mod.flow_mod_to_bitstring pkt)
+
+  let enable kind args =
+    try_lwt
+      match kind with
         | "enable" -> begin
           let conn_id::mac_addr::local_ip::remote_ip::
               local_sp_ip::remote_sp_ip::_ = args in
@@ -361,21 +433,121 @@ module Manager = struct
                             local_ip remote_ip local_sp_ip remote_sp_ip in
                     return ("true"))
           end
-        | _ -> 
-            Printf.eprintf "[ssh] Invalid connect kind %s\n%!" kind;
-            raise (SshError("Invalid connect kind"))
       with exn ->
         Printf.eprintf "[ssh]Error:%s\n%!" (Printexc.to_string exn);
         raise (SshError(Printexc.to_string exn))
 
+(*
+ * tunnel disabling code
+ * *)
+  let unset_flows dev local_tun_ip local_sp_ip = 
+    let controller = (List.hd Sp_controller.
+                      switch_data.Sp_controller.of_ctrl) in 
+    let dpid = 
+      (List.hd Sp_controller.switch_data.Sp_controller.dpid)  in
+
+    let flow_wild = OP.Wildcards.({
+      in_port=true; dl_vlan=true; dl_src=true; dl_dst=true;
+      dl_type=false; nw_proto=true; tp_dst=true; tp_src=true;
+      nw_dst=(char_of_int 0); nw_src=(char_of_int 32);
+      dl_vlan_pcp=true; nw_tos=true;}) in
+    
+    let flow = OP.Match.create_flow_match flow_wild 
+                 ~dl_type:(0x0800) ~nw_dst:local_sp_ip () in
+    let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.DELETE_STRICT 
+                ~priority:tactic_priority 
+                ~idle_timeout:0 ~buffer_id:(-1) [] () in 
+    lwt _ = OC.send_of_data controller dpid 
+              (OP.Flow_mod.flow_mod_to_bitstring pkt) in
+    
+    (* setup incoming flow *)
+    let Some(port) = Net_cache.Port_cache.dev_to_port_id dev in
+    let flow_wild = OP.Wildcards.({
+      in_port=false; dl_vlan=true; dl_src=true; dl_dst=true;
+      dl_type=false; nw_proto=true; tp_dst=true; tp_src=true;
+      nw_dst=(char_of_int 0); nw_src=(char_of_int 32);
+      dl_vlan_pcp=true; nw_tos=true;}) in
+    let flow = OP.Match.create_flow_match flow_wild ~in_port:port 
+                 ~dl_type:(0x0800) ~nw_dst:local_tun_ip () in
+    let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.DELETE_STRICT
+                ~priority:tactic_priority ~idle_timeout:0  
+                ~buffer_id:(-1) [] () in 
+      OC.send_of_data controller dpid 
+        (OP.Flow_mod.flow_mod_to_bitstring pkt)
+
+  let disable kind args =
+    try_lwt
+      match kind with
+        | "enable" -> begin
+          let conn_id::local_tun_ip::local_sp_ip::_ = args in
+          let conn_id = Int32.of_string conn_id in
+          let [local_tun_ip; local_sp_ip;] = 
+            List.map Uri_IP.string_to_ipv4 
+              [local_tun_ip; local_sp_ip;] in 
+          let dev_id = ref None in 
+          let _ = 
+            Hashtbl.iter 
+              (fun _ conn -> 
+                 if (conn.conn_id = conn_id) then
+                   dev_id := Some(conn.dev_id)) conn_db.conns
+          in 
+            match (!dev_id) with
+              | None -> 
+                  raise (SshError(("openvpn disable invalid conn_id")))
+              | Some (dev) ->
+                  (lwt _ = unset_flows (sprintf "tap%d" dev)  
+                            local_tun_ip local_sp_ip in
+                    return "true")
+          end
+      with exn ->
+        Printf.eprintf "[ssh]Error:%s\n%!" (Printexc.to_string exn);
+        raise (SshError(Printexc.to_string exn))
   (*************************************************************************
    *             TEARDOWN methods of tactic
    * ***********************************************************************)
 
-  let teardown _ =
-    true
+  let teardown kind args =
+    try_lwt
+      match kind with
+        | "teardown" -> begin
+            let conn_id::local_tun_ip::local_sp_ip::_ = args in
+            let conn_id = Int32.of_string conn_id in
+            let domain = ref None in
+            let _ = 
+              Hashtbl.iter 
+                (fun dom conn -> 
+                   if (conn.conn_id = conn_id) then
+                     domain := Some(dom)) conn_db.conns
+            in 
+            match (!domain) with
+              | None -> 
+                  raise (SshError(("ssh.teardown invalid conn_id")))
+              | Some (domain) -> begin
+                  (* 1. delete link from local state *)
+                  let conn = Hashtbl.find conn_db.conns domain in 
+                  let _ = Hashtbl.remove conn_db.conns domain in 
+                  
+                  (* 2. kill process if required*)
+                  let _ = 
+                    if (conn.conn_tp = SSH_SERVER) then
+                      Unix.kill conn.pid Sys.sigkill
+                  in
+                  (* 3. release tap device  and any possible ip allocation *)
+                    Tap.unset_dev conn.dev_id local_tun_ip >> 
+                    return "true"
+                end
+          
+          end
+        | _ -> 
+            eprintf "[ssh] Invalid kind %s for action teardown\n%!" kind; 
+            return "false"
+    with ex ->
+      eprintf "[ssh] Teardown error: %s\n%!" (Printexc.to_string ex);
+      raise (SshError(Printexc.to_string ex))
 
   let pkt_in_cb _ _ _ = 
+
+    
     return ()
 
 end

@@ -30,16 +30,16 @@ let ssh_port = 10000
 
 (* a struct to store details for each node participating in a 
  * tunnel formation *)
-type openvpn_client_state_type = {
+type ssh_client_state_type = {
   name: string;                    (* node name *)
   mutable tactic_ip: int32;        (* ip for the node for the tunnel *)
   mutable extern_ip: int32 option; (* public ip discovered through the test *)
   mutable dev_id: int option;      (* dev id of the tunnel tun tap device *)
 }
 
-type openvpn_conn_state_type = {
+type ssh_conn_state_type = {
   (* a list of the nodes *)
-  mutable nodes : openvpn_client_state_type list;
+  mutable nodes : ssh_client_state_type list;
   (* the direction of the tunnel as discovered through
    * the test. 1 -> (a > b), 2 -> (b > a), 3 -> cloud *)
   mutable direction : int; 
@@ -47,10 +47,10 @@ type openvpn_conn_state_type = {
   mutable conn_id : int32;  (* connection id *)
 }
 
-type openvpn_state_type = {
+type ssh_state_type = {
   (* a cache for connection informations *)
   conns : ((string * string), 
-           openvpn_conn_state_type) Hashtbl.t;
+           ssh_conn_state_type) Hashtbl.t;
   (* a monotonically increasing connection id generator *)
   mutable conn_counter : int32;
 }
@@ -110,7 +110,7 @@ let test a b =
    * *)  
   let pairwise_connection_test a b direction =
     try_lwt 
-      Printf.printf "[openvpn] Trying to start ssh service...\n%!";
+      Printf.printf "[ssh] Trying to start ssh service...\n%!";
       let rpc = (Rpc.create_tactic_request "ssh" 
         Rpc.TEST "server_start" [(string_of_int ssh_port)]) in
       lwt _ = (Nodes.send_blocking a rpc) in 
@@ -126,7 +126,7 @@ let test a b =
         dir := direction; succ := true; ip := res;
         return ()
     with exn ->
-      return (Printf.eprintf "[openvpn] Pairwise test %s->%s failed:%s\n%!" 
+      return (Printf.eprintf "[ssh] Pairwise test %s->%s failed:%s\n%!" 
                 a b (Printexc.to_string exn))
   in
 
@@ -289,6 +289,10 @@ let connect a b =
       (Printexc.to_string exn);
     return false
 
+(*
+ * methods to enable traffic transmission over the tunnel
+ * *)
+
 let setup_cloud_flows a_dev b_dev a_tun_ip b_tun_ip = 
   let controller = (List.hd Sp_controller.
                     switch_data.Sp_controller.of_ctrl) in 
@@ -330,22 +334,21 @@ let enable_ssh conn a b =
     let [q_a; q_b] = List.map (
       fun n -> Printf.sprintf "%s.d%d" n Config.signpost_number) [a; b] in 
     let rpc_a = 
-      (Rpc.create_tactic_request "ssh" Rpc.CONNECT "enable" 
+      (Rpc.create_tactic_request "ssh" Rpc.ENABLE "enable" 
          [(Int32.to_string conn.conn_id); (Nodes.get_node_mac b); 
           (Uri_IP.ipv4_to_string (get_tactic_ip conn q_a));
           (Uri_IP.ipv4_to_string (get_tactic_ip conn q_b));
           (Uri_IP.ipv4_to_string (Nodes.get_sp_ip a));
           (Uri_IP.ipv4_to_string (Nodes.get_sp_ip b))]) in
-    let rpc_b = 
-      (Rpc.create_tactic_request "ssh" Rpc.CONNECT "enable" 
-         [(Int32.to_string conn.conn_id); (Nodes.get_node_mac a); 
-          (Uri_IP.ipv4_to_string (get_tactic_ip conn q_b));
-          (Uri_IP.ipv4_to_string (get_tactic_ip conn q_a));
-          (Uri_IP.ipv4_to_string (Nodes.get_sp_ip b));
-          (Uri_IP.ipv4_to_string (Nodes.get_sp_ip a))]) in
-    lwt _ = Nodes.send_blocking b rpc_b in
     lwt _ = Nodes.send_blocking a rpc_a in
-    lwt _ = 
+      return ()
+  with ex -> 
+    Printf.printf "[ssh]Failed ssh enabling %s->%s:%s\n%!" a b
+      (Printexc.to_string ex);
+    raise Ssh_error
+
+let enable_cloud_ssh conn a b =
+  try_lwt 
       if (conn.direction = 3) then (
         let [q_a; q_b] = 
           List.map (fun n -> sprintf "%s.d%d" n Config.signpost_number) 
@@ -358,18 +361,81 @@ let enable_ssh conn a b =
       ) else (
         return ()
       )
-    in
-      return ("true")
   with ex -> 
-    Printf.printf "[openvpn]Failed openvpn enabling %s->%s:%s\n%!" a b
+    Printf.printf "[ssh]Failed ssh enabling %s->%s:%s\n%!" a b
       (Printexc.to_string ex);
     raise Ssh_error
 
 let enable a b =
   let (a, b) = gen_key a b in
   let conn = get_state a b in
-  lwt ret = enable_ssh conn a b in
-    return (bool_of_string ret)
+  lwt _ = (enable_ssh conn a b) <&>
+          (enable_ssh conn b a) <&>
+          (enable_cloud_ssh conn a b) in
+    return true
+
+(*
+ * disable code
+ * *)
+let disable_ssh conn a = 
+  (* Init server on b *)
+  try_lwt
+    let q_a = Printf.sprintf "%s.d%d" a Config.signpost_number in 
+    let rpc_a = 
+      (Rpc.create_tactic_request "ssh" Rpc.DISABLE "enable" 
+         [(Int32.to_string conn.conn_id); 
+          (Uri_IP.ipv4_to_string (get_tactic_ip conn q_a));
+          (Uri_IP.ipv4_to_string (Nodes.get_sp_ip a))]) in
+    lwt _ = Nodes.send_blocking a rpc_a in
+      return ()
+  with ex -> 
+    Printf.printf "[ssh]Failed ssh enabling :%s\n%!"
+      (Printexc.to_string ex);
+    raise Ssh_error
+
+let disable_cloud_ssh conn a b =
+  try_lwt 
+      if (conn.direction = 3) then (
+        let q_a = sprintf "%s.d%d" a Config.signpost_number in 
+        let a_tun_ip = get_tactic_ip conn q_a in
+        let controller = (List.hd Sp_controller.
+                          switch_data.Sp_controller.of_ctrl) in 
+        let dpid = 
+          (List.hd Sp_controller.switch_data.Sp_controller.dpid)  in
+  
+        let flow_wild = OP.Wildcards.({
+          in_port=false; dl_vlan=true; dl_src=true; dl_dst=true;
+          dl_type=false; nw_proto=true; tp_dst=true; tp_src=true;
+          nw_dst=(char_of_int 8); nw_src=(char_of_int 32);
+          dl_vlan_pcp=true; nw_tos=true;}) in
+        let flow = OP.Match.create_flow_match flow_wild 
+                     ~dl_type:(0x0800) ~nw_dst:a_tun_ip () in
+        let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.DELETE 
+                    ~idle_timeout:0 ~buffer_id:(-1) [] () in 
+          OC.send_of_data controller dpid 
+            (OP.Flow_mod.flow_mod_to_bitstring pkt)
+      ) else (
+        return ()
+      )
+  with ex -> 
+    Printf.printf "[ssh]Failed ssh enabling %s->%s:%s\n%!" a b
+      (Printexc.to_string ex);
+    raise Ssh_error
+
+let disable a b =
+  let (a, b) = gen_key a b in
+  let conn = get_state a b in
+  lwt _ = (disable_ssh conn a) <&>
+          (disable_ssh conn b) <&>
+          (disable_cloud_ssh conn a b) in
+  return true
+
+(*
+ * teardown code
+ * *)
+let teardown a b =
+  return true
+
 
 (* ******************************************
  * A tactic to setup a layer 2 ssh tunnel
@@ -377,22 +443,25 @@ let enable a b =
 
 let handle_request action method_name arg_list =
   let open Rpc in
-    match action with
-      | TEST ->
-        (try_lwt 
-          lwt ip = Ssh.Manager.test method_name arg_list in
-            return(Sp.ResponseValue ip)
-        with ex ->  
-          return(Sp.ResponseError (Printexc.to_string ex)) )
-      | CONNECT ->
-          (try 
+    (try_lwt 
+       match action with
+         | TEST ->
+             lwt ip = Ssh.Manager.test method_name arg_list in
+               return(Sp.ResponseValue ip)
+         | CONNECT ->
              lwt ip = Ssh.Manager.connect method_name arg_list in
                return(Sp.ResponseValue ip)            
-           with _ -> 
-             return (Sp.ResponseError "ssh_connect"))
-      | TEARDOWN ->
-           eprintf "Ssh doesn't support teardown action\n%!";
-             return(Sp.ResponseError "Ssh teardown is not supported yet")
+         | ENABLE ->
+             lwt ip = Ssh.Manager.enable method_name arg_list in
+               return(Sp.ResponseValue ip)            
+         | DISABLE ->
+             lwt ip = Ssh.Manager.disable method_name arg_list in
+               return(Sp.ResponseValue ip)            
+         | TEARDOWN ->
+             lwt ip = Ssh.Manager.teardown method_name arg_list in
+               return(Sp.ResponseValue ip)            
+      with ex ->  
+        return(Sp.ResponseError (Printexc.to_string ex)) )
 
 let handle_notification _ _ _ =
   eprintf "Ssh tactic doesn't handle notifications\n%!";
