@@ -14,8 +14,6 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
-
-
 open Lwt
 open Lwt_unix
 open Lwt_list
@@ -381,6 +379,11 @@ module Manager = struct
       with ex ->
         Printf.printf "[opevpn] client error: %s\n%!" (Printexc.to_string ex);
         raise(OpenVpnError(Printexc.to_string ex)))
+    | _ -> raise(OpenVpnError(
+        (Printf.sprintf "[openvpn] invalid invalid action %s" kind)))
+
+  let enable kind args =
+    match kind with
     | "enable" ->(
       try_lwt
         let conn_id::mac_addr::local_ip::remote_ip::
@@ -400,7 +403,7 @@ module Manager = struct
             | Some (dev) ->
                 lwt _ = setup_flows (sprintf "tap%d" dev) mac_addr 
                           local_ip remote_ip local_sp_ip remote_sp_ip in
-          return ("true")
+              return true
       with e -> 
         eprintf "[openvpn] server error: %s\n%!" (Printexc.to_string e); 
         raise (OpenVpnError((Printexc.to_string e)))
@@ -410,7 +413,7 @@ module Manager = struct
 
   (* tearing down the flow that push traffic over the tunnel 
    * *)
-  let unset_flows dev local_ip rem_ip local_sp_ip remote_sp_ip = 
+  let unset_flows dev local_tun_ip remote_sp_ip = 
     let controller = 
       (List.hd Sp_controller.switch_data.Sp_controller.of_ctrl) in 
     let dpid = 
@@ -425,7 +428,6 @@ module Manager = struct
       dl_vlan_pcp=true; nw_tos=true;}) in
     let flow = OP.Match.create_flow_match flow_wild 
                  ~dl_type:(0x0800) ~nw_dst:remote_sp_ip () in
-    let Some(port) = Net_cache.Port_cache.dev_to_port_id dev in
     let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.DELETE_STRICT 
                 ~priority:tactic_priority ~idle_timeout:0 
                 ~buffer_id:(-1) [] () in 
@@ -433,6 +435,7 @@ module Manager = struct
       ( OP.Flow_mod.flow_mod_to_bitstring pkt  ) in
       
     (* Setup incoming flow *)
+    let Some(port) = Net_cache.Port_cache.dev_to_port_id dev in
     let flow_wild = OP.Wildcards.({
       in_port=false; dl_vlan=true; dl_src=true; dl_dst=true;
       dl_type=false; nw_proto=true; tp_dst=true; tp_src=true;
@@ -440,45 +443,17 @@ module Manager = struct
       dl_vlan_pcp=true; nw_tos=true;}) in
     let flow = OP.Match.create_flow_match flow_wild 
                  ~in_port:port ~dl_type:(0x0800) 
-                 ~nw_dst:local_ip () in
+                 ~nw_dst:local_tun_ip () in
     let pkt = OP.Flow_mod.create flow 0L OP.Flow_mod.DELETE_STRICT
                 ~priority:tactic_priority ~idle_timeout:0  
                 ~buffer_id:(-1) [] () in 
       OC.send_of_data controller dpid 
         (OP.Flow_mod.flow_mod_to_bitstring pkt)
 
-
-  let teardown kind  args =
-    match kind with 
-      | "teardown" ->
-          (* kill openvpn pid*)
-          let conn_id::local_ip::remote_ip::local_sp_ip::remote_sp_ip::_
-            = args in
-        let conn_id = Int32.of_string conn_id in
-        let [local_ip; remote_ip; local_sp_ip; remote_sp_ip;] = 
-          List.map Uri_IP.string_to_ipv4 
-            [local_ip; remote_ip; local_sp_ip; remote_sp_ip;] in 
-        let dev_id = ref None in 
-        let _ = 
-          Hashtbl.iter 
-            (fun _ conn -> 
-               if (conn.conn_id = conn_id) then
-                 dev_id := Some(conn.dev_id)) conn_db.conns in 
-          match (!dev_id) with
-            | None -> raise (OpenVpnError("teardown invalid conn_id"))
-            | Some (dev) ->
-                lwt _ = unset_flows (string_of_int dev) local_ip remote_ip 
-                          local_sp_ip remote_sp_ip in
-                  return ("true")
-      | _ -> (
-          printf "[openvpn] teardown action %s not supported in test" kind;
-          return ("false"))
-
-  let disconnect kind args = 
+  let teardown kind args = 
     match kind with
-      | "disconnect" ->
+      | "teardown" ->
         let conn_id = Int32.of_string (List.hd args) in 
-(*         let conn_id = Int32.of_string conn_id in *)
         let state = ref None in 
         let _ = 
           Hashtbl.iter 
@@ -495,5 +470,30 @@ module Manager = struct
                   return ("true")
       | _ -> (
           printf "[openvpn] disconnect action %s not supported in test" kind;
+          return ("false"))
+
+  let disable kind  args =
+    match kind with 
+      | "disable" ->
+          let conn_id::local_tun_ip::remote_sp_ip::_ = args in
+          let conn_id = Int32.of_string conn_id in
+          let [local_tun_ip; remote_sp_ip;] = 
+            List.map Uri_IP.string_to_ipv4 
+              [local_tun_ip; remote_sp_ip;] in 
+          let dev_id = ref None in 
+          let _ = 
+            Hashtbl.iter 
+              (fun _ conn -> 
+                 if (conn.conn_id = conn_id) then
+                   dev_id := Some(conn.dev_id)) conn_db.conns in 
+            match (!dev_id) with
+              | None -> raise (OpenVpnError("teardown invalid conn_id"))
+              | Some (dev) ->
+                  (* disable required openflow flows *)
+                lwt _ = unset_flows (string_of_int dev) local_tun_ip 
+                          remote_sp_ip in
+                    return ("true")
+      | _ -> (
+          printf "[openvpn] teardown action %s not supported in test" kind;
           return ("false"))
 end

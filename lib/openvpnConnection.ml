@@ -276,16 +276,8 @@ let enable_openvpn conn a b =
           (Uri_IP.ipv4_to_string (get_tactic_ip conn q_b));
           (Uri_IP.ipv4_to_string (Nodes.get_sp_ip a));
           (Uri_IP.ipv4_to_string (Nodes.get_sp_ip b))]) in
-    lwt _ = Nodes.send_blocking a rpc in
-    let rpc = 
-      (Rpc.create_tactic_request "openvpn" Rpc.CONNECT "enable" 
-         [(Int32.to_string conn.conn_id); (Nodes.get_node_mac a); 
-          (Uri_IP.ipv4_to_string (get_tactic_ip conn q_b));
-          (Uri_IP.ipv4_to_string (get_tactic_ip conn q_a));
-          (Uri_IP.ipv4_to_string (Nodes.get_sp_ip b));
-          (Uri_IP.ipv4_to_string (Nodes.get_sp_ip a))]) in
-    lwt _ = Nodes.send_blocking b rpc in
-      return ("true")
+    lwt _ = Nodes.send_blocking a rpc  in
+      return ()
   with ex -> 
     Printf.printf "[openvpn]Failed openvpn enabling %s->%s:%s\n%!" a b
       (Printexc.to_string ex);
@@ -294,8 +286,41 @@ let enable_openvpn conn a b =
 let enable a b =
   let (a, b) = gen_key a b in
   let conn = get_state a b in
-  lwt ret = enable_openvpn conn a b in
-    return (bool_of_string ret)
+  lwt _ = (enable_openvpn conn a b) <&>
+             (enable_openvpn conn b a) in
+    return true
+
+(*
+ * disable code
+ * *)
+let disable_openvpn conn a b = 
+  try_lwt
+    let q_a = Printf.sprintf "%s.d%d" a Config.signpost_number in 
+    let rpc_a = 
+      (Rpc.create_tactic_request "ssh" Rpc.DISABLE "disable" 
+         [(Int32.to_string conn.conn_id); 
+          (Uri_IP.ipv4_to_string (get_tactic_ip conn q_a));
+          (Uri_IP.ipv4_to_string (Nodes.get_sp_ip b))]) in
+    lwt _ = Nodes.send_blocking a rpc_a in
+      return ()
+  with ex -> 
+    Printf.printf "[ssh]Failed ssh enabling :%s\n%!"
+      (Printexc.to_string ex);
+    raise Openvpn_error
+
+let disable a b =
+  let (a, b) = gen_key a b in
+  let conn = get_state a b in
+  lwt _ = (disable_openvpn conn a b) <&>
+          (disable_openvpn conn b a) in
+  return true
+
+(*
+ * teardown code
+ * *)
+let teardown a b =
+  return true
+
 
 (**********************************************************************
  * Handle tactic signature ********************************************)
@@ -310,9 +335,15 @@ let handle_request action method_name arg_list =
       | CONNECT ->
         lwt v = (Openvpn.Manager.connect method_name arg_list) in
           return(Sp.ResponseValue v)
-      | TEARDOWN ->
-          eprintf "[openvpn] teardown action unimplemented\n%!";
-          return(Sp.ResponseError "OpenVPN doesn't support teardown")
+      | ENABLE ->
+        lwt v = (Openvpn.Manager.enable method_name arg_list) in
+          return(Sp.ResponseValue (string_of_bool v))
+      | DISABLE ->
+        lwt v = (Openvpn.Manager.disable method_name arg_list) in
+          return(Sp.ResponseValue v)
+    | TEARDOWN ->
+      lwt v = (Openvpn.Manager.teardown method_name arg_list) in
+          return(Sp.ResponseValue v)
     with ex ->
       return(Sp.ResponseError (Printexc.to_string ex))
 
