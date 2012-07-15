@@ -28,6 +28,8 @@ type method_name = string
 type action =
   | TEST
   | CONNECT
+  | ENABLE
+  | DISABLE
   | TEARDOWN
 
 type command =

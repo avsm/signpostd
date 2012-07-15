@@ -46,6 +46,8 @@ type method_name = string
 type action =
   | TEST
   | CONNECT
+  | ENABLE
+  | DISABLE
   | TEARDOWN
 
 type command =
@@ -77,11 +79,15 @@ let rpc_id () =
 let string_of_action = function
   | TEST -> "test"
   | CONNECT -> "connect"
+  | ENABLE -> "enable"
+  | DISABLE -> "disable"
   | TEARDOWN -> "teardown"
 
 let action_of_string = function
   | "test" -> TEST
   | "connect" -> CONNECT
+  | "enable" -> ENABLE
+  | "disable" -> DISABLE
   | "teardown" -> TEARDOWN
   | act ->  begin
       let msg = Printf.sprintf "Invalid action %s" act in 

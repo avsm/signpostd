@@ -45,6 +45,8 @@ module type TacticSig = sig
   val test : name -> name -> bool Lwt.t
   val connect : name -> name -> bool Lwt.t
   val enable : name -> name -> bool Lwt.t
+  val disable : name -> name -> bool Lwt.t
+  val teardown : name -> name -> bool Lwt.t
   val handle_request : Rpc.action -> Rpc.method_name -> Rpc.arg list ->
     request_response Lwt.t
   val handle_notification : Rpc.action -> Rpc.method_name -> Rpc.arg list ->
