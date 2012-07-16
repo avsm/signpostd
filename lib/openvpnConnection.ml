@@ -270,7 +270,7 @@ let enable_openvpn conn a b =
     let [q_a; q_b] = List.map (
       fun n -> Printf.sprintf "%s.d%d" n Config.signpost_number) [a; b] in 
     let rpc = 
-      (Rpc.create_tactic_request "openvpn" Rpc.CONNECT "enable" 
+      (Rpc.create_tactic_request "openvpn" Rpc.ENABLE "enable" 
          [(Int32.to_string conn.conn_id); (Nodes.get_node_mac b); 
           (Uri_IP.ipv4_to_string (get_tactic_ip conn q_a));
           (Uri_IP.ipv4_to_string (get_tactic_ip conn q_b));
