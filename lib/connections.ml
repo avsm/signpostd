@@ -16,79 +16,134 @@
 
 open Lwt
 open Printf
+open List
 
+type link_state = 
+  | SUCCESS_INACTIVE
+  | SUCCESS_ACTIVE
+  | IN_PROGRESS
+  | FAILED
 
-type handle = 
-  | Name of Sp.name
-  | Wildcard
-
-type address =
-  | Address of Sp.addressable
-  | NoAddress
-
-type connection_state = {
-  connections : (handle * handle, (address * address) list) Hashtbl.t;
+type tunnel_state = {
+  (* Current state ofthe tunnel *)
+  mutable tactic_state : link_state;
+  (*
+   * Cache what was the result of the last try.
+  * *)
+  mutable last_res : link_state;
+  (* A connection identification in order to be able to tear down 
+   * connections.
+  * *)
+  mutable conn_id : int option;
+  (*
+   * Is there a local device we should store?
+   * TODO: this is not accurate as for a tactic we might 
+   * have multiple devices. Maybe make it a list and add
+   * a node.
+  * *)
+  device : string option;
+  (* For each tunel a string may have multiple ip addresses 
+  * semantically miningful only for the tunnel *)
+  address : (string, int32 list) Hashtbl.t;
 }
 
 
-let connection_db = {connections = (Hashtbl.create 0);}
+type connection_state = {
+  wait: unit Lwt_condition.t; 
+  mutable link: link_state;
+  tactic : (string, tunnel_state) Hashtbl.t;
+}
+
+(*
+type _state = {
+  connections : (handle * handle, tactic_result list) Hashtbl.t;
+}
+ *)
+
+let connections = 
+  (Hashtbl.create 0)
 
 let in_order a b = a < b
 
-let get pair =
-  try (Hashtbl.find connection_db.connections pair)
-  with Not_found -> []
-
-let set key value =
-  Hashtbl.replace connection_db.connections key value
-
-let flip_addresses addrs =
-  List.map (fun (a,b) -> (b,a)) addrs
-
-let name_to_db_name (a,b) =
-  (Name(a), Name(b))
-
-let ip_list_to_address_list ips =
-  List.map (fun (a,b) -> 
-    (Address(Sp.IPAddressInstance(a)), Address(Sp.IPAddressInstance(b)))
-  ) ips
-
-let store_addresses a b addr_list =
+let construct_key a b =
   match in_order a b with
-  | true -> set (name_to_db_name (a,b)) (ip_list_to_address_list addr_list)
-  | false -> set (name_to_db_name (b,a)) (ip_list_to_address_list (flip_addresses addr_list))
+    | true -> (a,b)
+    | false -> (b,a)
 
-let set_public_ips a ips =
-  eprintf "Storing ips for %s\n" a;
-  List.iter (fun s -> eprintf "storing ip: %s\n%!" s) ips;
-  let key = (Wildcard, Name(a)) in
-  let addrs = List.map (fun ip -> (NoAddress, Address(Sp.IPAddressInstance(ip)))) ips in
-  set key addrs
+(**********************************************************************
+ * Public API *********************************************************)
 
-let lookup a_name b_name =
-  eprintf "Looking up connections from %s to %s\n%!" a_name b_name;
-  let a = Name a_name in
-  let b = Name b_name in
-  let tunnels = match in_order a b with
-  | true -> begin
-      let addresses = get (a,b) in
-      List.map (fun (_, addr) -> addr) addresses
-  end
-  | false -> begin
-      let addresses = get (b,a) in
-      List.map (fun (addr, _) -> addr) addresses
-  end in
-  let direct_connection = 
-    let addresses = get (Wildcard, b) in
-    List.map (fun (_, addr) -> addr) addresses in
-  let connections = direct_connection @ tunnels in
-  let filtered = List.filter (function
-    | NoAddress -> false
-    | _ -> true) connections in
-  List.map (fun (Address(a)) -> a) filtered
+let store_tactic_state a b tactic_name link_state conn_id = 
+  let key = construct_key a b in
+  let link = match (Hashtbl.mem connections key) with
+    | true -> Hashtbl.find connections key
+    | false -> 
+        let link = {wait=(Lwt_condition.create ()); link=link_state;
+        tactic=(Hashtbl.create 16);} in 
+          Hashtbl.add connections key link;
+          link
+  in
+  let _ = 
+     match link_state with 
+       | IN_PROGRESS -> ()
+       | _ ->
+           Lwt_condition.broadcast link.wait ()
+   in 
+    link.link <- link_state;
+    let conn = 
+      if (Hashtbl.mem link.tactic tactic_name) then
+        Hashtbl.find link.tactic tactic_name
+      else (
+        let tactic = {tactic_state=link_state; last_res=link_state; 
+                      conn_id; device=None;address=(Hashtbl.create 16);} in
+          Hashtbl.add link.tactic tactic_name tactic;
+          tactic
+      )
+    in 
+      conn.conn_id <- conn_id;
+      conn.tactic_state <- link_state;
+      ()
 
-let find a b =
-  eprintf "Finding existing connections between %s and %s\n" a b;
-  eprintf "Trying to establish new ones\n";
-  Engine.connect a b;
-  lookup a b
+let wait_for_link a b =
+  let key = construct_key a b in
+  try
+    let conn = Hashtbl.find connections key in 
+      match conn.link with
+        | IN_PROGRESS ->
+            lwt _ = Lwt_condition.wait conn.wait  in
+              return(conn.link)
+        | _ -> return(conn.link)
+  with Not_found ->
+    return(FAILED)
+
+let get_link_status a b =
+  let key = construct_key a b in
+  try
+    let conn = Hashtbl.find connections key in 
+      conn.link
+  with Not_found ->
+    FAILED
+
+let get_link_active_tactic a b =
+  let key = construct_key a b in
+  try
+    let name = ref None in 
+    let conn = Hashtbl.find connections key in
+      Hashtbl.iter 
+        (fun a b -> 
+           if (b.tactic_state = SUCCESS_ACTIVE) then
+             name := Some(a)
+        ) conn.tactic;
+      !name
+  with Not_found ->
+    None
+
+let get_tactic_status a b tactic_name =
+  let key = construct_key a b in
+  try
+    let conn = Hashtbl.find connections key in 
+    let tactic = Hashtbl.find conn.tactic tactic_name in 
+      tactic.tactic_state
+  with Not_found ->
+    FAILED
+

@@ -1,24 +1,32 @@
 port $port$
 proto udp
-dev tun$dev_id$
-daemon 
+dev tap$dev_id$
+# daemon 
 
-ca client_tactics/openvpn/ca3.crt
-cert client_tactics/openvpn/signpost.crt
-key client_tactics/openvpn/signpost.key
-dh client_tactics/openvpn/dh1024.pem
+ca $tmp_dir$/$domain$/ca.crt
+cert $tmp_dir$/$domain$/vpn.crt
+key $tmp_dir$/$domain$/vpn.pem
+dh $tmp_dir$/../client_tactics/openvpn/dh1024.pem
 
-server 10.8.1.0 255.255.255.0
+#server 10.8.1.0 255.255.255.0
+server-bridge nogw
 keepalive 10 120
 client-to-client
 comp-lzo
 user nobody
 group nobody
 persist-key
+# mode tap
 persist-tun
 status openvpn-status.log
 verb 4
-writepid signpost_vpn_server_$dev_id$
+writepid $tmp_dir$/$domain$/server.pid
+persist-local-ip
+persist-remote-ip
+log $tmp_dir$/$domain$/server.log
+
+user root
+group root
 
 #script-security 3
 #client-connect "./client-connect.sh"

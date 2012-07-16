@@ -28,6 +28,8 @@ type method_name = string
 type action =
   | TEST
   | CONNECT
+  | ENABLE
+  | DISABLE
   | TEARDOWN
 
 type command =
@@ -48,7 +50,7 @@ type t =
 
 
 (* For encoding and decoding RPCs to JSON *)
-val rpc_of_string : string -> t option
+val rpc_of_string : string -> (t option * int)
 val rpc_to_string : t -> string
 
 (* Convenience method for creating valid RPCs *)

@@ -40,7 +40,7 @@ let rec compareVs v1 v2 = match v1, v2 with
   | [], _ -> false
   | _, [] -> true
   | x::xs, y::ys -> 
-      Printf.printf "%s %s\n%!" x y;
+(*       Printf.printf "%s %s\n%!" x y; *)
       x = y && compareVs xs ys
 
 let nxdomain =
@@ -55,11 +55,11 @@ let bind_ns_fd () =
       Lwt_unix.bind sp_fd src;)
     else ()
 
-let forward_dns_query_to_ns packet q = 
+let forward_dns_query_to_ns packet _ = 
   let open Dns.Packet in
   let module DQ = Dns.Query in
   (* Normalise the domain names to lower case *)
-  let data = Bitstring.string_of_bitstring (marshal packet) in
+  let data = Bitstring.string_of_bitstring (marshal_dns packet) in
   let dst = Lwt_unix.ADDR_INET((Unix.inet_addr_of_string Config.ns_server), 53) in
   lwt _ = Lwt_unix.sendto ns_fd data 0 (String.length data) [] dst in
   let buf = (String.create 1500) in 
@@ -73,31 +73,25 @@ let forward_dns_query_to_ns packet q =
                      additional=(reply.Dns.Packet.additionals);}) in
     return (Some(q_reply))
 
-let forward_dns_query_to_sp packet q = 
+let forward_dns_query_to_sp _ q = 
   let module DP = Dns.Packet in
   let module DQ = Dns.Query in
   (* Normalise the domain names to lower case *)
   let dst = String.lowercase (List.hd q.DP.q_name) in
   let src = !node_name in 
-  let q_name = ([dst; src; ] @ (Re_str.(split (regexp_string ".") our_domain))) in 
-  let query = DP.({q_name=q_name; q_type=`A; q_class=`IN; }) in 
-  let dns_q = DP.({id=1; 
-    detail=(DP.build_detail DP.({qr=`Query;opcode=`Query;aa=true;tc=false;
-    rd=false;ra=false;rcode=`NoError})); questions=[query];answers=[];
-    authorities=[];additionals=[];}) in
-  let data = Bitstring.string_of_bitstring (DP.marshal dns_q) in
-  let dst = Lwt_unix.ADDR_INET((Unix.inet_addr_of_string Config.iodine_node_ip), 53) in
-  lwt _ = Lwt_unix.sendto ns_fd data 0 (String.length data) [] dst in
-  let buf = (String.create 1500) in 
-  lwt (len, _) = Lwt_unix.recvfrom ns_fd buf 0 1500 [] in 
-  let lbl = Hashtbl.create 64 in 
-  let reply = (DP.parse_dns lbl (Bitstring.bitstring_of_string (String.sub buf 0 len))) in
-  let reply_det = DP.parse_detail reply.DP.detail in 
-  let q_reply = DQ.({rcode=reply_det.Dns.Packet.rcode;aa=reply_det.Dns.Packet.aa;
-                     answer=(reply.Dns.Packet.answers);
-                     authority=(reply.Dns.Packet.authorities);
-                     additional=(reply.Dns.Packet.additionals);}) in
-    return (Some(q_reply))
+  let host = (Printf.sprintf "%s.%s.%s" dst src our_domain) in  
+  lwt src_ip = Dns_resolver.gethostbyname 
+                 ~server:Config.external_ip ~dns_port:5354 host in
+
+  match src_ip with
+    | [] ->
+        return(Some(nxdomain))
+    | src_ip::_ -> 
+        return(Some(DQ.({rcode=DP.(`NoError); aa=true;
+                  answer=[
+                    DP.({rr_name=q.DP.q_name; rr_class=DP.(`IN);
+                         rr_ttl=60l;rr_rdata=(DP.(`A(src_ip)));})];
+                     authority=[]; additional=[];}) ))
 
   (* Figure out the response from a query packet and its question section *)
 let get_response packet q = 
@@ -115,9 +109,9 @@ let get_response packet q =
 let dnsfn ~src ~dst packet =
   let open Dns.Packet in
   match packet.questions with
-  |[] -> eprintf "bad dns query: no questions\n%!"; return None
-  |[q] -> (get_response packet q )
-     |_ -> eprintf "dns dns query: multiple questions\n%!"; return None
+    | [] -> eprintf "bad dns query: no questions\n%!"; return None
+    | [q] -> (get_response packet q )
+    | _ -> eprintf "dns dns query: multiple questions\n%!"; return None
 
 let dns_t () =
   lwt fd, src = Dns_server.bind_fd ~address:"127.0.0.1" ~port:53 in
@@ -125,8 +119,15 @@ let dns_t () =
 
 let get_hello_rpc ips =
   let string_port = (string_of_int (to_int !node_port)) in
-  let args = [!node_name; !node_ip] @ [string_port] @ ips in
-  Rpc.create_notification "hello" args
+  let ip_stream = (Unix.open_process_in
+                     (Config.dir ^ 
+                      "/client_tactics/get_local_device br0")) in
+  let test = Re_str.split (Re_str.regexp " ") 
+              (input_line ip_stream) in 
+  let _::mac::_ = test in
+(*   let mac = Net_cache.Arp_cache.mac_of_string mac in  *)
+  let args = [!node_name; !node_ip; string_port; mac;] @ ips in
+    Rpc.create_notification "hello" args
 
 let update_server_if_state_has_changed () =
   let ips = Nodes.discover_local_ips () in
@@ -140,6 +141,8 @@ let update_server_if_state_has_changed () =
       return ()
 
 let client_t () =
+  lwt _ = Net_cache.Routing.load_routing_table () in
+  lwt _ = Net_cache.Arp_cache.load_arp () in
   let xmit_t =
     while_lwt true do
       update_server_if_state_has_changed ();
@@ -148,17 +151,27 @@ let client_t () =
   in
   xmit_t
 
-let signal_t ~port =
-  IncomingSignalling.thread ~address:"0.0.0.0" ~port
+let signal_t  wakener_connect wakener_end ~port =
+  IncomingSignalling.thread_client  wakener_connect wakener_end 
+    ~address:Config.external_ip ~port
 
 let _ =
   (try node_name := Sys.argv.(1) with _ -> usage ());
+
+  Nodes.set_local_name !node_name;
   (try node_ip := Sys.argv.(2) with _ -> usage ());
   (try node_port := (of_int (int_of_string Sys.argv.(3))) with _ -> usage ());
-  let daemon_t = join 
-  [ 
-    client_t (); 
-    signal_t ~port:!node_port;
-    dns_t ();
-  ] in
+  let waiter_connect, wakener_connect = Lwt.task () in
+  let waiter_end, wakener_end = Lwt.task () in
+  let _ = Lwt.ignore_result 
+            (signal_t wakener_connect wakener_end  
+               ~port:(Int64.of_int Config.signal_port)) in 
+(*   lwt _ = waiter_connect in  *)
+  let daemon_t = 
+    (waiter_connect >>= 
+       (fun _ -> join [ 
+         waiter_end; 
+         client_t (); 
+         dns_t ();
+         Sp_controller.listen ();])) in
   Lwt_main.run daemon_t

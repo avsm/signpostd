@@ -23,6 +23,6 @@ type t =
   | Null
 
 val to_string : t -> string
-val of_string : string -> t
+val of_string : string -> t * int
 
 exception Runtime_error of string * t

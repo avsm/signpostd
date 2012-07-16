@@ -12,7 +12,7 @@ Library signpost
 #  Pack:               true
   Findlibname:        signpost
   Modules:            Rpc
-  BuildDepends:       lwt.syntax, lwt, re, lwt.unix, uri, re.str, openflow
+  BuildDepends:       lwt.syntax, lwt, re, lwt.unix, uri, re.str, openflow, crypto_keys, bitstring
 
 Executable server
   Path:               lib
@@ -29,3 +29,12 @@ Executable client
   CompiledObject:     best
   Install:            false
   BuildDepends:       signpost, dns, dns.server
+
+Executable send_cmd
+  Path:               lib
+  MainIs:             remoteControl.ml
+  Custom:             true
+  CompiledObject:     best
+  Install:            false
+  BuildDepends:       signpost
+

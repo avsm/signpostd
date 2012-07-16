@@ -94,9 +94,18 @@ def transfer file
   end
 end
 
+def initial_transfer
+  ohai "Performing initial file transfer"
+  Dir.glob("**/*.*").each do |f|
+    transfer f
+  end
+  ohai "Initial transfer done."
+end
+
 puts "Files will be uploaded to #{$remote_path} on #{$hosts.join(", ")}."
 puts "Will use the following private key: #{$priv_key}"
 ohai "Monitoring changes in #{$dir}"
+initial_transfer
 FSSM.monitor($dir) do
   update do |b, r|
     transfer r

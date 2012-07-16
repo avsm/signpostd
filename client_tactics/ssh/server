@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -e 
+
+CONFIG_DIR=$1
+
+echo 0 > /selinux/enforce
+echo 1 > /proc/sys/net/ipv4/ip_forward 
+
+/usr/sbin/sshd -e -D -p 10000 -h $CONFIG_DIR/signpost.pem \
+  -o "AllowUsers=root" \
+  -o "PermitTunnel=yes" \
+  -o "PermitRootLogin=yes" \
+  -o "PidFile=/tmp/signpost_sshd.pid" \
+  -o "AuthorizedKeysFile=.ssh/signpost_tunnel" \
+  -o "UsePAM=yes" \
+  -f $CONFIG_DIR/sshd_config 
