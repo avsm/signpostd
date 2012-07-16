@@ -124,6 +124,20 @@ let get_link_status a b =
   with Not_found ->
     FAILED
 
+let get_link_active_tactic a b =
+  let key = construct_key a b in
+  try
+    let name = ref None in 
+    let conn = Hashtbl.find connections key in
+      Hashtbl.iter 
+        (fun a b -> 
+           if (b.tactic_state = SUCCESS_ACTIVE) then
+             name := Some(a)
+        ) conn.tactic;
+      !name
+  with Not_found ->
+    None
+
 let get_tactic_status a b tactic_name =
   let key = construct_key a b in
   try

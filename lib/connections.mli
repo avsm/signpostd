@@ -45,6 +45,8 @@ val store_tactic_state : Sp.name -> Sp.name ->
  *)
 val wait_for_link : Sp.name -> Sp.name -> link_state Lwt.t
 
+val get_link_active_tactic : Sp.name -> Sp.name -> string option 
+
 (** Returns the status of a previously run tactic for
  *  a pair of nodes. Raises Not_found, if a tactic has
  *  not previously been run for the named pair 
