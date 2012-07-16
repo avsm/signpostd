@@ -66,7 +66,8 @@ module Manager = struct
     let _ = 
       try
         (Lwt_unix.bind sock (Lwt_unix.ADDR_INET (Unix.inet_addr_any,
-        port)))
+        port)));
+        Lwt_unix.setsockopt sock Unix.SO_REUSEADDR true
       with Unix.Unix_error (e, _, _) ->
         printf "[openvpn] error: %s\n%!" (Unix.error_message e);
         raise (OpenVpnError("Couldn't be a udp server"))
