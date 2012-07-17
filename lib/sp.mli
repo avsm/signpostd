@@ -16,6 +16,7 @@
 
 
 exception Client_error of string
+exception InvalidState of string
 
 
 type name = string
@@ -26,9 +27,10 @@ type srv = SRV of ip * port
 type addressable =
   | IPAddressInstance of ip
   | SRVInstance of srv
+  | Unreachable
 
 type signalling_channel =
-  | SignallingChannel of ip * port
+  | SignallingChannel of Lwt_unix.file_descr
   | NoSignallingChannel
 
 type request_response =
@@ -39,7 +41,11 @@ type request_response =
 module type TacticSig = sig
   val name : unit -> Rpc.tactic_name
   (* val provides : unit -> channel_property list *)
-  val connect : name -> name -> unit Lwt.t
+  val test : name -> name -> bool Lwt.t
+  val connect : name -> name -> bool Lwt.t
+  val enable : name -> name -> bool Lwt.t
+  val disable : name -> name -> bool Lwt.t
+  val teardown : name -> name -> bool Lwt.t
   val handle_request : Rpc.action -> Rpc.method_name -> Rpc.arg list ->
     request_response Lwt.t
   val handle_notification : Rpc.action -> Rpc.method_name -> Rpc.arg list ->

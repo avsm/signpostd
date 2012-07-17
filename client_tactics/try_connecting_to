@@ -31,30 +31,31 @@ socket.bind("0.0.0.0", listen_port)
 
 3.times do
   ips.each do |ip|
-    socket.send token, 0, ip, send_port
+    data = "#{ip}-#{token}"
+    socket.send data, 0, ip, send_port
   end
   sleep(0.1)
 end
 
 retry_count = 10
 
-received_from = []
+received_on = []
 
 sleep(0.1)
 begin # emulate blocking recvfrom
   while retry_count > 0 do
-    data, addr = socket.recvfrom_nonblock(10)  #=> ["aaa", ["AF_INET", 33302, "localhost.localdomain", "127.0.0.1"]]
-    if data == token then
-      ip = addr[3]
-      received_from << ip
+    data, addr = socket.recvfrom_nonblock(100)  #=> ["aaa", ["AF_INET", 33302, "localhost.localdomain", "127.0.0.1"]]
+    addressable_ip, received_token = data.split("-")
+    if received_token == token then
+      received_on << addressable_ip
     end
   end
-rescue IO::WaitReadable
-  # IO.select([socket])
+rescue Exception => e
   if retry_count > 0 then
     retry_count -= 1
+    sleep(0.01)
     retry
   end
 end
 
-puts received_from.uniq.join(" ")
+puts received_on.uniq.join(" ")

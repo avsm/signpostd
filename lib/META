@@ -1,8 +1,8 @@
 # OASIS_START
-# DO NOT EDIT (digest: 8fbf1e54c54d45e4334e889291551c56)
+# DO NOT EDIT (digest: 465a41af021f7ea32cb8d0852e5c6477)
 version = "0.1-dev"
 description = "FRP tactics engine"
-requires = "lwt.syntax lwt re lwt.unix uri re.str openflow"
+requires = "lwt.syntax lwt re lwt.unix uri re.str openflow crypto_keys"
 archive(byte) = "signpost.cma"
 archive(native) = "signpost.cmxa"
 exists_if = "signpost.cma"

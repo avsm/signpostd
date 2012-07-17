@@ -46,6 +46,8 @@ type method_name = string
 type action =
   | TEST
   | CONNECT
+  | ENABLE
+  | DISABLE
   | TEARDOWN
 
 type command =
@@ -77,11 +79,15 @@ let rpc_id () =
 let string_of_action = function
   | TEST -> "test"
   | CONNECT -> "connect"
+  | ENABLE -> "enable"
+  | DISABLE -> "disable"
   | TEARDOWN -> "teardown"
 
 let action_of_string = function
   | "test" -> TEST
   | "connect" -> CONNECT
+  | "enable" -> ENABLE
+  | "disable" -> DISABLE
   | "teardown" -> TEARDOWN
   | act ->  begin
       let msg = Printf.sprintf "Invalid action %s" act in 
@@ -184,8 +190,8 @@ let rpc_of_json =
 let rpc_of_string s =
   let json = try Some (Json.of_string s) with _ -> None in
   match json with
-  | None -> None
-  | Some x -> rpc_of_json x
+  | None -> (None, 0)
+  | Some (x, i)-> (rpc_of_json x, i)
 
 (**********************************************************************
  * Encode JSON-RPCs ***************************************************)

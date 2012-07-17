@@ -1,0 +1,15 @@
+#!/usr/bin/env bash 
+
+CONFIG_DIR=$1
+DST_IP=$2
+DST_PORT=$3
+LOCAL_DEV=$4
+DST_DEV=$5
+
+sudo ssh -i $CONFIG_DIR/signpost.pem -N \
+    -o "StrictHostKeyChecking=yes" \
+    -o "UserKnownHostsFile=$CONFIG_DIR/known_hosts" \
+    -o "GlobalKnownHostsFile=$CONFIG_DIR/known_hosts" \
+    -o "HashKnownHosts=no" \
+    root@$DST_IP -p $DST_PORT -o Tunnel=ethernet \
+    -w $LOCAL_DEV:$DST_DEV 

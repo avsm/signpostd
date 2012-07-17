@@ -2,11 +2,14 @@
 set -ex
 
 NS=`cat lib/config.ml | grep external_ip | awk '{print $4}' | sed 's/"//g'`
-IODINE_DOMAIN="i.d2.signpo.st"
+IODINE_DOMAIN="i.d1.signpo.st"
+NS="23.23.179.30"
+#NODE_NAME=`hostname -s`
+NODE_NAME=tablet
 
 PASS=`cat scripts/PASSWD`
-if [ "`ps -e | grep iodine | wc -l `" -lt 2 ]; then
-  if NS==""; then
+if [ "`ps -e | grep iodine | wc -l `" -lt 1 ]; then
+  if [ $NS -eq "" ]; then
     iodine -P ${PASS} "$IODINE_DOMAIN";
   else
     iodine -P ${PASS} $NS "$IODINE_DOMAIN"
@@ -24,4 +27,31 @@ else
     fi
 fi
 SIG_PORT=42425
-./client.native `hostname -s` $IP $SIG_PORT
+
+# delete all arp entries, so that we will discover them using openflow
+# arp -n | awk '/(^[0-9]+\.?)+/ {print $1;}' | xargs -I '{}' arp -d '{}'
+
+# clean up ports from openvswitch switch
+ovs-vsctl show | grep Interface | grep tap | awk '{print $2;}' \
+    | xargs -I '{}' ovs-vsctl del-port br0  '{}'
+ovs-dpctl show br0 | grep tap | awk '{print $3}' \
+  | xargs -I '{}' ovs-vsctl del-port br0  '{}'
+
+# clean up ip addresses from bridge interface
+ip addr show  dev br0 | grep 10\\.\[23\]\\. | awk '{print $2;}' \
+  |  xargs -I '{}'  ip addr del  '{}' dev br0
+# clean up ip addresses from bridge interface
+ip addr show  dev br0 | grep 172\\.31\\. | awk '{print $2;}' \
+  |  xargs -I '{}'  ip addr del  '{}' dev br0
+
+# cleaning default links for sp addresses
+route -n | grep 172\\.31\\.  | awk '{print $1" netmask "$3" gw "$2;}' \
+    | xargs -I '{}' echo route del -net '{}' > /tmp/sp_route_cleanup.sh
+
+# cleanning up ssh routes
+route -n | grep 10\\.\[23\]\\. | awk '{print $1" netmask "$3" gw "$2;}' \
+    | xargs -I '{}' echo route del -net '{}' >> /tmp/sp_route_cleanup.sh
+
+sudo sh /tmp/sp_route_cleanup.sh   
+
+./client.native $NODE_NAME $IP $SIG_PORT
