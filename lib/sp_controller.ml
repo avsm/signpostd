@@ -277,10 +277,8 @@ let listen ?(port = 6633) () =
                 let _ = Printf.printf "[openflow] Received a connection %s:%d\n%!"
                                       (Unix.string_of_inet_addr dst) port  in
                 let ip = 
-                  match (Nettypes.ipv4_addr_of_string 
-                           (Unix.string_of_inet_addr dst)) with
-                    | None -> invalid_arg "dest ip is Invalid"
-                    | Some(ip) -> ip
+                  Nodes.convert_ip_string_to_int
+                           (Unix.string_of_inet_addr dst)
                 in
                   Lwt_unix.set_blocking fd true;
                   OC.listen fd (ip, port) init

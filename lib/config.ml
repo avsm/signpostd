@@ -34,3 +34,5 @@ let signal_port = 3456
 
 (* RPCs timeout after 5 minutes *)
 let rpc_timeout = 5 * 6
+
+let net_intf = "eth0"
