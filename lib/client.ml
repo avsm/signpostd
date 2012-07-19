@@ -20,7 +20,7 @@ open Printf
 open Int64
 open Re_str
 
-
+module DP = Dns.Packet
 module IncomingSignalling = SignalHandler.Make (ClientSignalling)
 
 
@@ -44,7 +44,7 @@ let rec compareVs v1 v2 = match v1, v2 with
       x = y && compareVs xs ys
 
 let nxdomain =
-  {Dns.Query.rcode=`NXDomain; aa=false; answer=[]; authority=[]; additional=[]}
+  {Dns.Query.rcode=DP.NXDomain; aa=false; answer=[]; authority=[]; additional=[]}
 
 let bind_ns_fd () =
   if (!ns_fd_bind) then (
@@ -87,10 +87,10 @@ let forward_dns_query_to_sp _ q =
     | [] ->
         return(Some(nxdomain))
     | src_ip::_ -> 
-        return(Some(DQ.({rcode=DP.(`NoError); aa=true;
+        return(Some(DQ.({rcode=DP.NoError; aa=true;
                   answer=[
-                    DP.({rr_name=q.DP.q_name; rr_class=DP.(`IN);
-                         rr_ttl=60l;rr_rdata=(DP.(`A(src_ip)));})];
+                    DP.({rr_name=q.DP.q_name; rr_class=IN;
+                         rr_ttl=60l;rr_rdata=A(src_ip);})];
                      authority=[]; additional=[];}) ))
 
   (* Figure out the response from a query packet and its question section *)
