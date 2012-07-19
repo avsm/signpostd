@@ -21,8 +21,8 @@ open Lwt_unix
 open Lwt_list
 open Printf
 
-module OP = Ofpacket
-module OC = Controller
+module OP = Openflow.Packet
+module OC = Openflow.Controller
 
 module DP = Dns.Packet
 
@@ -108,7 +108,7 @@ module Manager = struct
  * *)
   let handle_outgoing_syn_packet controller dpid evt =
     let (pkt, port, buffer_id) = match evt with 
-      | Controller.Event.Packet_in(port, buffer_id, pkt, dpid) ->
+      | OC.Event.Packet_in(port, buffer_id, pkt, dpid) ->
           (pkt,port,buffer_id)
       | _ -> eprintf "Unknown event";failwith "Invalid of action"
     in

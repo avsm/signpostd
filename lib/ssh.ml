@@ -24,8 +24,8 @@ open Printf
 let ssh_port = 10000
 let tactic_priority = 5 
 
-module OP = Ofpacket
-module OC = Controller
+module OP = Openflow.Packet
+module OC = Openflow.Controller
 
 module Manager = struct
   exception SshError of string

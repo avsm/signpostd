@@ -20,8 +20,8 @@ open Lwt_unix
 open Printf
 open Int64
 
-module OP =Ofpacket
-module  OC = Controller
+module OP = Openflow.Packet
+module OC = Openflow.Controller
 
 exception Ssh_error
 
