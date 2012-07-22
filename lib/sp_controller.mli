@@ -17,35 +17,27 @@
 
 (* register a callback for a specific flow match *)
 
-
-(*
-module OP = Ofpacket
-module OC = Controller
- *)
-(* val register_pkt_in_cb : Ofpacket.Match.t -> (Controller.state -> Ofpacket.datapath_id -> (Ofpacket.Port.t * int32 *
-Bitstring.t * Ofpacket.datapath_id) -> unit Lwt.t) -> unit *)
-
 type pkt_in_cb_struct 
 
 type switch_state = {
-  mutable mac_cache: (Ofpacket.eaddr, Ofpacket.Port.t) Hashtbl.t; 
-  mutable dpid: Ofpacket.datapath_id list;
-  mutable of_ctrl: Controller.state list;
+  mutable mac_cache: (Openflow.Packet.eaddr, Openflow.Packet.Port.t) Hashtbl.t; 
+  mutable dpid: Openflow.Packet.datapath_id list;
+  mutable of_ctrl: Openflow.Controller.state list;
   mutable pkt_in_cb_cache : pkt_in_cb_struct list;
-  cb_register : (Ofpacket.Match.t, (Controller.state -> Ofpacket.datapath_id -> 
-                   Controller.Event.e -> unit Lwt.t) ) Hashtbl.t;
+  cb_register : (Openflow.Packet.Match.t, (Openflow.Controller.state ->Openflow.Packet.datapath_id -> 
+                   Openflow.Controller.Event.e -> unit Lwt.t) ) Hashtbl.t;
 } 
 
 val switch_data : switch_state
 (* setup a listening openflow controller *)
 val listen : ?port:int -> unit -> unit Lwt.t
 
-val register_handler : Ofpacket.Match.t -> 
-  (Controller.state -> Ofpacket.datapath_id -> 
-     Controller.Event.e -> unit Lwt.t) -> unit
-val unregister_handler : Ofpacket.Match.t -> 
-  (Controller.state -> Ofpacket.datapath_id -> 
-     Controller.Event.e -> unit Lwt.t) -> unit
+val register_handler : Openflow.Packet.Match.t -> 
+  (Openflow.Controller.state -> Openflow.Packet.datapath_id -> 
+     Openflow.Controller.Event.e -> unit Lwt.t) -> unit
+val unregister_handler : Openflow.Packet.Match.t -> 
+  (Openflow.Controller.state -> Openflow.Packet.datapath_id -> 
+     Openflow.Controller.Event.e -> unit Lwt.t) -> unit
 
 val add_dev : string -> string -> string -> unit Lwt.t
 val del_dev : string -> string -> string -> unit Lwt.t

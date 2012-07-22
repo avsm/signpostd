@@ -31,6 +31,9 @@ let ns_server="8.8.8.8"
 (* for testing *)
 
 let signal_port = 3456
+let dns_port = 5354
 
 (* RPCs timeout after 5 minutes *)
 let rpc_timeout = 5 * 6
+
+let net_intf = "eth0"

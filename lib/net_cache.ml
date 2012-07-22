@@ -17,7 +17,7 @@
 open Lwt
 open Printf
 
-module OP = Ofpacket
+module OP = Openflow.Packet
 
 module Routing = struct
 

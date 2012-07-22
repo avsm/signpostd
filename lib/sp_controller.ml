@@ -21,8 +21,8 @@ open Lwt_unix
 open Printf
 
 
-module OP = Ofpacket
-module OC = Controller
+module OP = Openflow.Packet
+module OC = Openflow.Controller
 module OE = OC.Event
 
 
@@ -45,7 +45,7 @@ type switch_state = {
   mutable dpid: OP.datapath_id list;
   mutable of_ctrl: OC.state list;
   mutable pkt_in_cb_cache : pkt_in_cb_struct list;
-  cb_register : (OP.Match.t, (Controller.state -> OP.datapath_id -> 
+  cb_register : (OP.Match.t, (OC.state -> OP.datapath_id -> 
                    OE.e -> unit Lwt.t) ) Hashtbl.t;
 }
 
@@ -277,13 +277,11 @@ let listen ?(port = 6633) () =
                 let _ = Printf.printf "[openflow] Received a connection %s:%d\n%!"
                                       (Unix.string_of_inet_addr dst) port  in
                 let ip = 
-                  match (Nettypes.ipv4_addr_of_string 
-                           (Unix.string_of_inet_addr dst)) with
-                    | None -> invalid_arg "dest ip is Invalid"
-                    | Some(ip) -> ip
+                  Nodes.convert_ip_string_to_int
+                           (Unix.string_of_inet_addr dst)
                 in
                   Lwt_unix.set_blocking fd true;
-                  Controller.listen fd (ip, port) init
+                  OC.listen fd (ip, port) init
             | ADDR_UNIX(_) -> invalid_arg "invalid unix addr"
 
       done

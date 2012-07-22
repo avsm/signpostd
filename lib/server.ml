@@ -14,7 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-open Dns
+module DP = Dns.Packet
 open Lwt 
 open Printf
 open Int64
@@ -31,7 +31,7 @@ let our_domain_l =
 
 (* Respond with an NXDomain if record doesnt exist *)
 let nxdomain =
-  return (Some { Dns.Query.rcode=`NXDomain; aa=false;
+  return (Some { Dns.Query.rcode=DP.NXDomain; aa=false;
     answer=[]; authority=[]; additional=[] })
 
 (* Ip address response for a node *)
@@ -40,12 +40,12 @@ let ip_resp ~dst ~src ~domain =
   lwt ip = Engine.find src dst in
     match ip with
       | (Sp.IPAddressInstance(ip)) -> (
-          let answers = { rr_name=dst::src::domain;
-                          rr_class=`IN; rr_ttl=0l;
-                          rr_rdata=`A (Uri_IP.string_to_ipv4 ip);} in
-            return ({ Dns.Query.rcode=`NoError; aa=true; answer=[answers]; 
+          let answers = { name=dst::src::domain;
+                          cls=RR_IN; ttl=0l;
+                          rdata=A (Uri_IP.string_to_ipv4 ip);} in
+            return ({ Dns.Query.rcode=DP.NoError; aa=true; answer=[answers]; 
               authority=[]; additional=[]; }) )
-      | _ -> return ( { Dns.Query.rcode=`NXDomain; aa=false;
+      | _ -> return ( { Dns.Query.rcode=DP.NXDomain; aa=false;
                answer=[]; authority=[]; additional=[] })
 
 (* Figure out the response from a query packet and its question section *)

@@ -21,7 +21,7 @@ open Lwt_unix
 open Lwt_list
 open Printf
 
-module OP = Ofpacket
+module OP = Openflow.Packet
 
 type tap_det = {
     mutable dev_id: int;

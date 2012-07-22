@@ -20,7 +20,7 @@ open Printf
 open Int64
 open Re_str
 
-
+module DP = Dns.Packet
 module IncomingSignalling = SignalHandler.Make (ClientSignalling)
 
 
@@ -44,7 +44,7 @@ let rec compareVs v1 v2 = match v1, v2 with
       x = y && compareVs xs ys
 
 let nxdomain =
-  {Dns.Query.rcode=`NXDomain; aa=false; answer=[]; authority=[]; additional=[]}
+  {Dns.Query.rcode=DP.NXDomain; aa=false; answer=[]; authority=[]; additional=[]}
 
 let bind_ns_fd () =
   if (!ns_fd_bind) then (
@@ -56,22 +56,29 @@ let bind_ns_fd () =
     else ()
 
 let forward_dns_query_to_ns packet _ = 
-  let open Dns.Packet in
-  let module DQ = Dns.Query in
-  (* Normalise the domain names to lower case *)
-  let data = Bitstring.string_of_bitstring (marshal_dns packet) in
-  let dst = Lwt_unix.ADDR_INET((Unix.inet_addr_of_string Config.ns_server), 53) in
-  lwt _ = Lwt_unix.sendto ns_fd data 0 (String.length data) [] dst in
-  let buf = (String.create 1500) in 
-  lwt (len, _) = Lwt_unix.recvfrom ns_fd buf 0 1500 [] in 
-  let lbl = Hashtbl.create 64 in 
-  let reply = (parse_dns lbl (Bitstring.bitstring_of_string (String.sub buf 0 len))) in
-  let reply_det = parse_detail reply.detail in 
-  let q_reply = DQ.({rcode=reply_det.Dns.Packet.rcode;aa=reply_det.Dns.Packet.aa;
-                     answer=(reply.Dns.Packet.answers);
-                     authority=(reply.Dns.Packet.authorities);
-                     additional=(reply.Dns.Packet.additionals);}) in
-    return (Some(q_reply))
+  let buf = Lwt_bytes.create 4096 in
+  let data = DP.marshal buf packet in
+  let dst =
+    Lwt_unix.ADDR_INET((Unix.inet_addr_of_string Config.ns_server), 53) 
+  in
+  lwt _ = Lwt_bytes.sendto ns_fd data 0 (Cstruct.len data) [] dst in
+  
+  let buflen = 1514 in
+  let buf = Lwt_bytes.create buflen in 
+  lwt (len, _) = Lwt_bytes.recvfrom ns_fd buf 0 buflen [] in 
+  let names = Hashtbl.create 8 in 
+  let reply = DP.parse names buf in
+  let q_reply =
+    let module DQ = Dns.Query in
+    let rcode = DP.(reply.detail.rcode) in
+    let aa = DP.(reply.detail.aa) in
+    DQ.({ rcode; aa;
+          answer = reply.DP.answers;
+          authority = reply.DP.authorities;
+          additional = reply.DP.additionals;
+        })
+  in
+  return (Some q_reply)
 
 let forward_dns_query_to_sp _ q = 
   let module DP = Dns.Packet in
@@ -80,17 +87,18 @@ let forward_dns_query_to_sp _ q =
   let dst = String.lowercase (List.hd q.DP.q_name) in
   let src = !node_name in 
   let host = (Printf.sprintf "%s.%s.%s" dst src our_domain) in  
-  lwt src_ip = Dns_resolver.gethostbyname 
-                 ~server:Config.external_ip ~dns_port:5354 host in
-
+  lwt src_ip = 
+      Dns_resolver.gethostbyname
+        ~server:Config.external_ip ~dns_port:Config.dns_port host
+  in
   match src_ip with
     | [] ->
         return(Some(nxdomain))
     | src_ip::_ -> 
-        return(Some(DQ.({rcode=DP.(`NoError); aa=true;
+        return(Some(DQ.({rcode=DP.NoError; aa=true;
                   answer=[
-                    DP.({rr_name=q.DP.q_name; rr_class=DP.(`IN);
-                         rr_ttl=60l;rr_rdata=(DP.(`A(src_ip)));})];
+                    DP.({name=q.DP.q_name; cls=RR_IN;
+                         ttl=60l; rdata=A(src_ip);})];
                      authority=[]; additional=[];}) ))
 
   (* Figure out the response from a query packet and its question section *)

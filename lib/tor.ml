@@ -20,9 +20,9 @@ open Lwt
 open Lwt_list
 open Printf
 
-module OP = Ofpacket
-module OC = Controller
-module OE = Controller.Event
+module OP = Openflow.Packet
+module OC = Openflow.Controller
+module OE = OC.Event
 
 module Manager = struct
   exception SocksError of string

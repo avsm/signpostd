@@ -19,8 +19,8 @@ open Lwt_unix
 open Lwt_list
 open Printf
 
-module OP = Ofpacket
-module OC = Controller
+module OP = Openflow.Packet
+module OC = Openflow.Controller
 
 module Manager = struct
   exception DirectError of string
